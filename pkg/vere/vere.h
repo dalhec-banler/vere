@@ -63,6 +63,7 @@
       typedef struct _u3_meat {
         struct _u3_meat* nex_u;
         c3_d             len_d;
+        c3_y             ver_y;    //  protocol version: 0x00=jam, 0x01=ram
         c3_y             hun_y[0];
       } u3_meat;
 
@@ -1216,6 +1217,11 @@
       */
         void
         u3_newt_send(u3_mojo* moj_u, c3_d len_d, c3_y* byt_y);
+
+      /* u3_newt_send_vers(): write versioned buffer to stream.
+      */
+        void
+        u3_newt_send_vers(u3_mojo* moj_u, c3_y ver_y, c3_d len_d, c3_y* byt_y);
 
       /* u3_newt_read(): activate reading on input stream.
       */

@@ -39,6 +39,7 @@
 #include <ftw.h>
 
 #include "noun.h"
+#include "../blob.h"
 
 struct _u3_umon;
 struct _u3_udir;
@@ -431,9 +432,7 @@ static c3_m
 _unix_write_file_hard(c3_c* pax_c, u3_noun mim)
 {
   c3_i  fid_i = c3_open(pax_c, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-  c3_w len_w, rit_w, siz_w;
   c3_h  mug_h = 0;
-  c3_y* dat_y;
 
   u3_noun dat = u3t(u3t(mim));
 
@@ -444,27 +443,76 @@ _unix_write_file_hard(c3_c* pax_c, u3_noun mim)
     return 0;
   }
 
-  siz_w = u3h(u3t(mim));
-  len_w = u3r_met(3, dat);
-  dat_y = c3_calloc(siz_w);
+  //  bob atom: stream from blob store to file
+  //
+  if ( c3y == u3a_is_bob(dat) ) {
+    c3_h bob_mug_h = u3a_bob_mug(dat);
+    c3_w bob_seq_w = u3a_bob_seq(dat);
+    c3_c src_c[8192];
+    u3_blob_path(src_c, u3C.dir_c, bob_mug_h, bob_seq_w);
 
-  u3r_bytes(0, len_w, dat_y, dat);
-  u3z(mim);
+    c3_i src_i = open(src_c, O_RDONLY);
+    if ( src_i < 0 ) {
+      u3l_log("error opening blob %s for reading: %s",
+              src_c, strerror(errno));
+      close(fid_i);
+      u3z(mim);
+      return 0;
+    }
 
-  rit_w = write(fid_i, dat_y, siz_w);
-
-  if ( rit_w != siz_w ) {
-    u3l_log("error writing %s: %s",
-            pax_c, strerror(errno));
-    mug_h = 0;
+    c3_y buf_y[65536];
+    ssize_t got_i;
+    while ( (got_i = read(src_i, buf_y, sizeof(buf_y))) > 0 ) {
+      c3_y* ptr_y = buf_y;
+      ssize_t rem_i = got_i;
+      while ( rem_i > 0 ) {
+        ssize_t wrt_i = write(fid_i, ptr_y, rem_i);
+        if ( wrt_i <= 0 ) {
+          u3l_log("error writing %s: %s", pax_c, strerror(errno));
+          close(src_i);
+          close(fid_i);
+          u3z(mim);
+          return 0;
+        }
+        ptr_y += wrt_i;
+        rem_i -= wrt_i;
+      }
+    }
+    close(src_i);
+    mug_h = bob_mug_h;
   }
   else {
-    mug_h = u3r_mug_bytes(dat_y, len_w);
+    //  normal atom: materialize and write in chunks
+    //
+    c3_w siz_w = u3h(u3t(mim));
+    c3_w len_w = u3r_met(3, dat);
+    c3_y* dat_y = c3_calloc(siz_w);
+
+    u3r_bytes(0, len_w, dat_y, dat);
+
+    c3_d  rem_d = (c3_d)siz_w;
+    c3_y* ptr_y = dat_y;
+    c3_o  ok_o  = c3y;
+    while ( rem_d > 0 ) {
+      size_t  ask_i = ( rem_d > 0x40000000UL ) ? 0x40000000UL : (size_t)rem_d;
+      ssize_t wrt_i = write(fid_i, ptr_y, ask_i);
+      if ( wrt_i <= 0 ) {
+        u3l_log("error writing %s: %s", pax_c, strerror(errno));
+        ok_o = c3n;
+        break;
+      }
+      ptr_y += wrt_i;
+      rem_d -= wrt_i;
+    }
+
+    if ( c3y == ok_o ) {
+      mug_h = u3r_mug_bytes(dat_y, len_w);
+    }
+    c3_free(dat_y);
   }
 
+  u3z(mim);
   close(fid_i);
-  c3_free(dat_y);
-
   return mug_h;
 }
 
@@ -473,6 +521,22 @@ _unix_write_file_hard(c3_c* pax_c, u3_noun mim)
 static void
 _unix_write_file_soft(u3_ufil* fil_u, u3_noun mim)
 {
+  u3_noun dat = u3t(u3t(mim));
+
+  //  for bob atoms, compare mugs directly — no disk read needed
+  //
+  if ( c3y == u3a_is_bob(dat) ) {
+    c3_h bob_mug_h = u3a_bob_mug(dat);
+    if ( bob_mug_h == fil_u->gum_w ) {
+      u3z(mim);
+      return;
+    }
+    fil_u->gum_w = _unix_write_file_hard(fil_u->pax_c, mim);
+    return;
+  }
+
+  //  small files: read existing content to detect no-op writes
+  //
   struct stat buf_u;
   c3_i  fid_i = c3_open(fil_u->pax_c, O_RDONLY, 0644);
   c3_ws len_ws, red_ws;
@@ -888,6 +952,9 @@ static u3_noun _unix_update_node(u3_unix* unx_u, u3_unod* nod_u);
 **  otherwise, read the file and get a mug checksum. if same as
 **  gum_w, move on. otherwise, overwrite add path plus data to
 **  %into event.
+**
+**  Files larger than U3_BLOB_THRESH are stored in the blob store
+**  and referenced by a bob atom instead of copying bytes into loom.
 */
 static u3_noun
 _unix_update_file(u3_unix* unx_u, u3_ufil* fil_u)
@@ -903,7 +970,6 @@ _unix_update_file(u3_unix* unx_u, u3_ufil* fil_u)
   struct stat buf_u;
   c3_i  fid_i = c3_open(fil_u->pax_c, O_RDONLY, 0644);
   c3_ws len_ws, red_ws;
-  c3_y* dat_y;
 
   if ( fid_i < 0 || fstat(fid_i, &buf_u) < 0 ) {
     if ( ENOENT == errno ) {
@@ -917,40 +983,80 @@ _unix_update_file(u3_unix* unx_u, u3_ufil* fil_u)
   }
 
   len_ws = buf_u.st_size;
-  dat_y = c3_malloc(len_ws);
 
-  red_ws = read(fid_i, dat_y, len_ws);
+  //  large files: stream into blob store, return bob atom
+  //
+  if ( (c3_d)len_ws > U3_BLOB_THRESH ) {
+    c3_h  bob_mug_h;
+    c3_w  bob_seq_w;
 
-  if ( close(fid_i) < 0 ) {
-    u3l_log("error closing file %s: %s",
-            fil_u->pax_c, strerror(errno));
-  }
+    c3_o ok_o = u3_blob_save_fd(unx_u->pax_c, fid_i,
+                                (c3_d)len_ws, &bob_mug_h, &bob_seq_w);
 
-  if ( len_ws != red_ws ) {
-    if ( red_ws < 0 ) {
-      u3l_log("error reading file %s: %s",
+    if ( close(fid_i) < 0 ) {
+      u3l_log("error closing file %s: %s",
               fil_u->pax_c, strerror(errno));
     }
-    else {
-      u3l_log("wrong # of bytes read in file %s: %" PRIc3_ws " %" PRIc3_ws,
-              fil_u->pax_c, len_ws, red_ws);
+
+    if ( c3n == ok_o ) {
+      u3l_log("blob: failed to save large file %s", fil_u->pax_c);
+      return u3_nul;
     }
-    c3_free(dat_y);
-    return u3_nul;
+
+    //  skip if content unchanged (bob_mug_h is content mug)
+    //
+    if ( bob_mug_h == fil_u->gum_w ) {
+      return u3_nul;
+    }
+
+    {
+      u3_noun pax = _unix_string_to_path(unx_u, fil_u->pax_c);
+      u3_noun mim = u3nt(c3__text, u3i_string("plain"), u3_nul);
+      u3_atom atm = u3i_blob(bob_mug_h, bob_seq_w);
+      u3_noun dat = u3nt(mim, (u3_atom)len_ws, atm);
+
+      return u3nc(u3nt(pax, u3_nul, dat), u3_nul);
+    }
   }
-  else {
-    c3_h mug_h = u3r_mug_bytes(dat_y, len_ws);
-    if ( mug_h == fil_u->gum_w ) {
+
+  //  small files: existing path — read into buffer
+  //
+  {
+    c3_y* dat_y = c3_malloc(len_ws);
+
+    red_ws = read(fid_i, dat_y, len_ws);
+
+    if ( close(fid_i) < 0 ) {
+      u3l_log("error closing file %s: %s",
+              fil_u->pax_c, strerror(errno));
+    }
+
+    if ( len_ws != red_ws ) {
+      if ( red_ws < 0 ) {
+        u3l_log("error reading file %s: %s",
+                fil_u->pax_c, strerror(errno));
+      }
+      else {
+        u3l_log("wrong # of bytes read in file %s: %" PRIc3_ws " %" PRIc3_ws,
+                fil_u->pax_c, len_ws, red_ws);
+      }
       c3_free(dat_y);
       return u3_nul;
     }
     else {
-      u3_noun pax = _unix_string_to_path(unx_u, fil_u->pax_c);
-      u3_noun mim = u3nt(c3__text, u3i_string("plain"), u3_nul);
-      u3_noun dat = u3nt(mim, len_ws, u3i_bytes(len_ws, dat_y));
+      c3_h mug_h = u3r_mug_bytes(dat_y, len_ws);
+      if ( mug_h == fil_u->gum_w ) {
+        c3_free(dat_y);
+        return u3_nul;
+      }
+      else {
+        u3_noun pax = _unix_string_to_path(unx_u, fil_u->pax_c);
+        u3_noun mim = u3nt(c3__text, u3i_string("plain"), u3_nul);
+        u3_noun dat = u3nt(mim, len_ws, u3i_bytes(len_ws, dat_y));
 
-      c3_free(dat_y);
-      return u3nc(u3nt(pax, u3_nul, dat), u3_nul);
+        c3_free(dat_y);
+        return u3nc(u3nt(pax, u3_nul, dat), u3_nul);
+      }
     }
   }
 }
@@ -1162,6 +1268,8 @@ _unix_update_mount(u3_unix* unx_u, u3_umon* mon_u, u3_noun all)
 
 /* _unix_initial_update_file(): read file, but don't watch
 **  XX deduplicate with _unix_update_file()
+**
+**  Files larger than U3_BLOB_THRESH are stored in the blob store.
 */
 static u3_noun
 _unix_initial_update_file(c3_c* pax_c, c3_c* bas_c)
@@ -1169,7 +1277,6 @@ _unix_initial_update_file(c3_c* pax_c, c3_c* bas_c)
   struct stat buf_u;
   c3_i  fid_i = c3_open(pax_c, O_RDONLY, 0644);
   c3_ws len_ws, red_ws;
-  c3_y* dat_y;
 
   if ( fid_i < 0 || fstat(fid_i, &buf_u) < 0 ) {
     if ( ENOENT == errno ) {
@@ -1183,36 +1290,69 @@ _unix_initial_update_file(c3_c* pax_c, c3_c* bas_c)
   }
 
   len_ws = buf_u.st_size;
-  dat_y = c3_malloc(len_ws);
 
-  red_ws = read(fid_i, dat_y, len_ws);
+  //  large files: stream into blob store
+  //
+  if ( (c3_d)len_ws > U3_BLOB_THRESH ) {
+    c3_h  bob_mug_h;
+    c3_w  bob_seq_w;
 
-  if ( close(fid_i) < 0 ) {
-    u3l_log("error closing initial file %s: %s",
-            pax_c, strerror(errno));
+    c3_o ok_o = u3_blob_save_fd(u3C.dir_c, fid_i,
+                                (c3_d)len_ws, &bob_mug_h, &bob_seq_w);
+
+    if ( close(fid_i) < 0 ) {
+      u3l_log("error closing initial file %s: %s", pax_c, strerror(errno));
+    }
+
+    if ( c3n == ok_o ) {
+      u3l_log("blob: failed to save large initial file %s", pax_c);
+      return u3_nul;
+    }
+
+    {
+      u3_noun rel_pax = _unix_string_to_path_helper(pax_c + strlen(bas_c) + 1);
+      u3_noun mim     = u3nt(c3__text, u3i_string("plain"), u3_nul);
+      u3_atom atm     = u3i_blob(bob_mug_h, bob_seq_w);
+      u3_noun dat     = u3nt(mim, (u3_atom)len_ws, atm);
+
+      return u3nc(u3nt(rel_pax, u3_nul, dat), u3_nul);
+    }
   }
 
-  if ( len_ws != red_ws ) {
-    if ( red_ws < 0 ) {
-      u3l_log("error reading initial file %s: %s",
+  //  small files: existing path — read into buffer
+  //
+  {
+    c3_y* dat_y = c3_malloc(len_ws);
+
+    red_ws = read(fid_i, dat_y, len_ws);
+
+    if ( close(fid_i) < 0 ) {
+      u3l_log("error closing initial file %s: %s",
               pax_c, strerror(errno));
     }
-    else {
-      u3l_log("wrong # of bytes read in initial file %s: %" PRIc3_ws " %" PRIc3_ws,
-              pax_c, len_ws, red_ws);
-    }
-    c3_free(dat_y);
-    return u3_nul;
-  }
-  else {
-    u3_noun pax = _unix_string_to_path_helper(pax_c
-                   + strlen(bas_c)
-                   + 1); /* XX slightly less VERY BAD than before*/
-    u3_noun mim = u3nt(c3__text, u3i_string("plain"), u3_nul);
-    u3_noun dat = u3nt(mim, len_ws, u3i_bytes(len_ws, dat_y));
 
-    c3_free(dat_y);
-    return u3nc(u3nt(pax, u3_nul, dat), u3_nul);
+    if ( len_ws != red_ws ) {
+      if ( red_ws < 0 ) {
+        u3l_log("error reading initial file %s: %s",
+                pax_c, strerror(errno));
+      }
+      else {
+        u3l_log("wrong # of bytes read in initial file %s: %" PRIc3_ws " %" PRIc3_ws,
+                pax_c, len_ws, red_ws);
+      }
+      c3_free(dat_y);
+      return u3_nul;
+    }
+    else {
+      u3_noun rel_pax = _unix_string_to_path_helper(pax_c
+                         + strlen(bas_c)
+                         + 1); /* XX slightly less VERY BAD than before*/
+      u3_noun mim = u3nt(c3__text, u3i_string("plain"), u3_nul);
+      u3_noun dat = u3nt(mim, len_ws, u3i_bytes(len_ws, dat_y));
+
+      c3_free(dat_y);
+      return u3nc(u3nt(rel_pax, u3_nul, dat), u3_nul);
+    }
   }
 }
 

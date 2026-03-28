@@ -5,6 +5,7 @@
 #include "vere.h"
 #include "version.h"
 #include "db/lmdb.h"
+#include "blob.h"
 #include <types.h>
 
 #include "migrate.h"
@@ -118,6 +119,19 @@ _disk_commit_start(u3_disk* log_u)
                                           _disk_commit_after_cb);
 }
 
+/* _disk_bob_free_cb(): called by noun allocator when a bob atom is freed.
+**
+**   Deletes the blob file from the store. The pier path is read from
+**   u3C.dir_c, which is set before any nouns are allocated.
+*/
+static void
+_disk_bob_free_cb(c3_h mug_h, c3_w seq_w)
+{
+  if ( u3C.dir_c ) {
+    u3_blob_delete(u3C.dir_c, mug_h, seq_w);
+  }
+}
+
 /* u3_disk_etch(): serialize an event for persistence. RETAIN [eve]
 */
 size_t
@@ -132,23 +146,25 @@ u3_disk_etch(u3_disk* log_u,
   u3t_event_trace("disk etch", 'B');
 #endif
 
-  //  XX check version number in log_u
-  //  XX needs api redesign to limit allocations
+  //  serialize event with ram (reference-aware encoding for bob atoms)
+  //  output: [4B mug][ram_bytes...]
   //
   {
-    u3_atom mat = u3qe_jam(eve);
-    c3_w  len_w = u3r_met(3, mat);
+    c3_d  ram_d;
+    c3_y* ram_y;
 
-    len_i = 4 + len_w;
+    u3s_ram_xeno(eve, &ram_d, &ram_y);
+
+    len_i = 4 + ram_d;
     dat_y = c3_malloc(len_i);
 
-    dat_y[0] = mug_h & 0xff;
-    dat_y[1] = (mug_h >> 8) & 0xff;
+    dat_y[0] =  mug_h        & 0xff;
+    dat_y[1] = (mug_h >>  8) & 0xff;
     dat_y[2] = (mug_h >> 16) & 0xff;
     dat_y[3] = (mug_h >> 24) & 0xff;
-    u3r_bytes(0, len_w, dat_y + 4, mat);
+    memcpy(dat_y + 4, ram_y, ram_d);
 
-    u3z(mat);
+    c3_free(ram_y);
   }
 
 #ifdef DISK_TRACE_JAM
@@ -324,16 +340,27 @@ u3_disk_sift(u3_disk* log_u,
   u3t_event_trace("disk sift", 'B');
 #endif
 
-  //  XX check version in log_u
-  //
   *mug_h = dat_y[0]
          ^ (dat_y[1] <<  8)
          ^ (dat_y[2] << 16)
          ^ (dat_y[3] << 24);
 
-  //  XX u3m_soft?
+  //  try ram (VER3 events) first, fall back to jam (VER1/VER2 events)
   //
-  *job = u3ke_cue(u3i_bytes(len_i - 4, dat_y + 4));
+  {
+    c3_d    pay_d = len_i - 4;
+    c3_y*   pay_y = dat_y + 4;
+    u3_weak tap   = u3s_tap_xeno(pay_d, pay_y);
+
+    if ( u3_none != tap ) {
+      *job = tap;
+    }
+    else {
+      //  XX u3m_soft?
+      //
+      *job = u3ke_cue(u3i_bytes(pay_d, pay_y));
+    }
+  }
 
 #ifdef DISK_TRACE_CUE
   u3t_event_trace("disk sift", 'E');
@@ -975,6 +1002,26 @@ _disk_epoc_meta(u3_disk*    log_u,
   return c3y;
 }
 
+/* _disk_epoc_blobs_init(): create empty blobs.txt in epoch directory.
+*/
+static c3_o
+_disk_epoc_blobs_init(const c3_c* epo_c)
+{
+  c3_c blb_c[8193];
+  snprintf(blb_c, sizeof(blb_c), "%s/blobs.txt", epo_c);
+
+  //  create empty blobs.txt (open for append, creating if needed)
+  c3_i fid_i = open(blb_c, O_WRONLY | O_CREAT | O_APPEND, 0600);
+  if ( -1 == fid_i ) {
+    fprintf(stderr, "disk: failed to create blobs.txt in %s: %s\r\n",
+                    epo_c, strerror(errno));
+    return c3n;
+  }
+  fsync(fid_i);
+  close(fid_i);
+  return c3y;
+}
+
 /* _disk_epoc_zero: make epoch zero.
 */
 static c3_o
@@ -1046,6 +1093,12 @@ _disk_epoc_zero(c3_c* pax_c)
   }
   close(epo_i);
 #endif
+
+  //  create empty blobs.txt for GC tracking
+  //
+  if ( c3n == _disk_epoc_blobs_init(epo_c) ) {
+    goto fail3;
+  }
 
   //  success
   return c3y;
@@ -1184,6 +1237,12 @@ _disk_epoc_roll(u3_disk* log_u, c3_d epo_d)
 
   close(epo_i);
 #endif
+
+  //  create empty blobs.txt for GC tracking
+  //
+  if ( c3n == _disk_epoc_blobs_init(epo_c) ) {
+    goto fail3;
+  }
 
   fprintf(stderr, "disk: created epoch %" PRIc3_d "\r\n", epo_d);
 
@@ -1971,6 +2030,13 @@ _disk_epoc_load(u3_disk* log_u, c3_d lat_d, u3_disk_load_e lod_e)
       return _epoc_good;
     } break;
 
+    case U3E_VER3: {
+      //  VER3 is the current epoch format (image.bin + blobs.txt + ram events).
+      //  Load path is identical to VER2; no migration needed.
+      //  Fall through to VER2 handling.
+      //
+    } // fallthrough
+
     case U3E_VER2: {
       if ( u3_dlod_epoc == lod_e ) {
         c3_c chk_c[8193];
@@ -2056,6 +2122,16 @@ _disk_epoc_load(u3_disk* log_u, c3_d lat_d, u3_disk_load_e lod_e)
          || (!log_u->epo_d && log_u->dun_d && !u3A->eve_d)
          || (c3n == _disk_vere_diff(log_u)) )
       {
+        //  VER2 epoch: always roll to VER3 if snapshot is up-to-date
+        //
+        if (  (U3E_VER2 == ver_h)
+           && (log_u->dun_d == u3A->eve_d) )
+        {
+          if ( c3n == _disk_epoc_roll(log_u, log_u->dun_d) ) {
+            fprintf(stderr, "disk: failed to roll VER2 epoch to VER3\r\n");
+            exit(1);
+          }
+        }
         return _epoc_good;
       }
       else if ( log_u->dun_d != u3A->eve_d ) {
@@ -2144,6 +2220,10 @@ u3_disk_make(c3_c* pax_c)
     }
   }
 
+  //  make $pier/.urb/bob (blob store)
+  //
+  u3_blob_init(pax_c);
+
   return c3y;
 }
 
@@ -2211,6 +2291,14 @@ u3_disk_load(c3_c* pax_c, u3_disk_load_e lod_e)
       c3_free(log_u); // XX leaks dire(s)
       return 0;
     }
+
+  //  initialize blob store (creates .urb/bob/ if needed)
+  //
+  u3_blob_init(pax_c);
+
+  //  register blob-free callback so noun GC can delete orphaned blobs
+  //
+  u3C.bob_free_f = _disk_bob_free_cb;
 
     //  XX move this into u3_disk_make
     //

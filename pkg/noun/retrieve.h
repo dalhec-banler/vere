@@ -606,4 +606,13 @@
       c3_ys
       u3r_comp(u3_atom a, u3_atom b);
 
+      /* u3r_blob_load(): materialize a bob atom by loading from the blob store.
+      **
+      **   Returns a normal indirect atom with the blob's bytes, or u3_none on
+      **   failure. [pax_c] is the pier path ($pier/).
+      **   Does NOT consume [a]; caller must manage refcounts as usual.
+      */
+      u3_weak
+      u3r_blob_load(u3_atom a, const c3_c* pax_c);
+
 #endif /* ifndef U3_RETRIEVE_H */

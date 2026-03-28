@@ -9,6 +9,7 @@
 #include "io/ames/stun.h"
 #include "mesa/mesa.h"
 #include "mesa/bitset.h"
+#include "../blob.h"
 #include <allocate.h>
 #include <error.h>
 #include <imprison.h>
@@ -2648,7 +2649,26 @@ _mesa_hear_page(u3_mesa_pict* pic_u, sockaddr_in lan_u)
 
         c3_y* buf_y = c3_calloc(mesa_size_pact(pac_u));
         c3_h res_h = mesa_etch_pact_to_buf(buf_y, mesa_size_pact(pac_u), pac_u);
-        pac = u3i_bytes(res_h, buf_y);
+
+        //  large reassembled packets: store as blob, return bob atom
+        //
+        if ( (c3_d)res_h > U3_BLOB_THRESH ) {
+          c3_h bob_mug_h;
+          c3_w bob_seq_w;
+
+          if ( c3y == u3_blob_save(sam_u->pir_u->pax_c, buf_y,
+                                    (c3_d)res_h, &bob_mug_h, &bob_seq_w) )
+          {
+            pac = u3i_blob(bob_mug_h, bob_seq_w);
+          }
+          else {
+            pac = u3i_bytes(res_h, buf_y);
+          }
+        }
+        else {
+          pac = u3i_bytes(res_h, buf_y);
+        }
+
         c3_free(buf_y);
       }
       cad = u3nt(c3__heer, lan, pac);

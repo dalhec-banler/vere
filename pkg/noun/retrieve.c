@@ -6,8 +6,17 @@
 #include "hashtable.h"
 #include "imprison.h"
 #include "murmur3.h"
+#include "options.h"
 #include "trace.h"
 #include "xtract.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 
 //  declarations of inline functions
@@ -321,6 +330,31 @@ _cr_sing_atom(u3_atom a, u3_noun b)
     return c3n;
   }
   else {
+    c3_o a_bob = u3a_is_bob(a);
+    c3_o b_bob = u3a_is_bob(b);
+
+    //  bob vs bob: equal iff same mug bucket and sequence number
+    //
+    if ( (c3y == a_bob) && (c3y == b_bob) ) {
+      u3a_atom* a_u = u3a_to_ptr(a);
+      u3a_atom* b_u = u3a_to_ptr(b);
+      return (  (a_u->mug_h   == b_u->mug_h)
+             && (a_u->buf_w[0] == b_u->buf_w[0]) ) ? c3y : c3n;
+    }
+    //  bob vs normal (or normal vs bob): materialize the bob
+    //
+    if ( (c3y == a_bob) || (c3y == b_bob) ) {
+      u3_atom bob = (c3y == a_bob) ? a : (u3_atom)b;
+      u3_atom nrm = (c3y == a_bob) ? (u3_atom)b : a;
+      u3_atom mat = u3r_blob_load(bob, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return c3n;
+      }
+      c3_o ret_o = _cr_sing_atom(mat, nrm);
+      u3z(mat);
+      return ret_o;
+    }
+
     u3a_atom* a_u = u3a_to_ptr(a);
     u3a_atom* b_u = u3a_to_ptr(b);
 
@@ -988,6 +1022,18 @@ u3r_met(c3_y  a_y,
     daz_w = b;
   }
   else {
+    //  materialize bob atoms before measuring
+    //
+    if ( c3y == u3a_is_bob(b) ) {
+      u3_atom mat = u3r_blob_load(b, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return (c3_w)u3m_bail(c3__fail);
+      }
+      c3_w ret_w = u3r_met(a_y, mat);
+      u3z(mat);
+      return ret_w;
+    }
+
     u3a_atom* b_u = u3a_to_ptr(b);
 
     gal_w = (b_u->len_w) - 1;
@@ -1031,6 +1077,18 @@ u3r_bit(c3_w    a_w,
     else return (1 & (b >> a_w));
   }
   else {
+    //  materialize bob atoms before extracting bit
+    //
+    if ( c3y == u3a_is_bob(b) ) {
+      u3_atom mat = u3r_blob_load(b, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return 0;
+      }
+      c3_b ret_b = u3r_bit(a_w, mat);
+      u3z(mat);
+      return ret_b;
+    }
+
     u3a_atom* b_u   = u3a_to_ptr(b);
     c3_y        vut_y = (a_w & (u3a_word_bits - 1));
     c3_w        pix_w = (a_w >> u3a_word_bits_log);
@@ -1101,6 +1159,19 @@ u3r_bytes(c3_w    a_w,
     }
   }
   else {
+    //  materialize bob atoms before extracting bytes
+    //
+    if ( c3y == u3a_is_bob(d) ) {
+      u3_atom mat = u3r_blob_load(d, u3C.dir_c);
+      if ( u3_none == mat ) {
+        memset(c_y, 0, b_w);
+        return;
+      }
+      u3r_bytes(a_w, b_w, c_y, mat);
+      u3z(mat);
+      return;
+    }
+
     u3a_atom* d_u   = u3a_to_ptr(d);
     c3_w n_w = d_u->len_w << u3a_word_bytes_shift;
     c3_y* x_y = (c3_y*)d_u->buf_w + a_w;
@@ -1273,6 +1344,18 @@ u3r_half(c3_w    a_w,
 #endif
   }
   else {
+    //  materialize bob atoms before extracting half-word
+    //
+    if ( c3y == u3a_is_bob(b) ) {
+      u3_atom mat = u3r_blob_load(b, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return 0;
+      }
+      c3_h ret_h = u3r_half(a_w, mat);
+      u3z(mat);
+      return ret_h;
+    }
+
     u3a_atom* b_u = u3a_to_ptr(b);
 #ifdef VERE64
     if ( a_w >= (b_u->len_w * 2) ) {
@@ -1408,6 +1491,19 @@ u3r_halfs(c3_w    a_w,
     }
   }
   else {
+    //  materialize bob atoms before extracting half-words
+    //
+    if ( c3y == u3a_is_bob(d) ) {
+      u3_atom mat = u3r_blob_load(d, u3C.dir_c);
+      if ( u3_none == mat ) {
+        memset((c3_y*)c_h, 0, b_w << u3a_half_bytes_shift);
+        return;
+      }
+      u3r_halfs(a_w, b_w, c_h, mat);
+      u3z(mat);
+      return;
+    }
+
     c3_w len_w;
     c3_h* buf_h;
     // XX: 64 little endian. very ugly!
@@ -1464,6 +1560,19 @@ u3r_chubs(c3_w    a_w,
     }
   }
   else {
+    //  materialize bob atoms before extracting chubs
+    //
+    if ( c3y == u3a_is_bob(d) ) {
+      u3_atom mat = u3r_blob_load(d, u3C.dir_c);
+      if ( u3_none == mat ) {
+        memset((c3_y*)c_d, 0, b_w << u3a_chub_bytes_shift);
+        return;
+      }
+      u3r_chubs(a_w, b_w, c_d, mat);
+      u3z(mat);
+      return;
+    }
+
     u3a_atom* d_u = u3a_to_ptr(d);
 #ifndef VERE64
     c3_w len_w = d_u->len_w * 2;
@@ -1985,7 +2094,24 @@ _cr_mug_next(u3a_pile* pil_u, u3_noun veb)
       //
       else if ( c3y == u3a_is_atom(veb) ) {
         u3a_atom* vat_u = (u3a_atom*)veb_u;
-        c3_h      mug_h = u3r_mug_words(vat_u->buf_w, vat_u->len_w);
+        c3_h      mug_h;
+        //  bob atoms: mug was set from blob content hash on creation;
+        //  materialize only if somehow missing (should not occur)
+        //
+        if ( c3y == u3a_is_bob(veb) ) {
+          if ( vat_u->mug_h ) {
+            return (c3_h)vat_u->mug_h;
+          }
+          u3_atom mat = u3r_blob_load(veb, u3C.dir_c);
+          if ( u3_none == mat ) {
+            return (c3_h)u3m_bail(c3__fail);
+          }
+          mug_h = u3r_mug(mat);
+          u3z(mat);
+        }
+        else {
+          mug_h = u3r_mug_words(vat_u->buf_w, vat_u->len_w);
+        }
         vat_u->mug_h = mug_h;
         return mug_h;
       }
@@ -2168,6 +2294,12 @@ u3r_word_buffer(u3_atom* a, c3_w* len_w)
     *len_w = 1;
     return a;
   }
+  //  bob atoms have no in-loom word buffer; caller must materialize first
+  //
+  if ( c3y == u3a_is_bob(*a) ) {
+    u3m_bail(c3__fail);
+    return 0; // unreachable
+  }
   u3a_atom* pug_u = u3a_to_ptr(*a);
   *len_w = pug_u->len_w;
   return pug_u->buf_w;
@@ -2208,4 +2340,67 @@ u3r_comp(u3_atom a, u3_atom b)
   }
 
   return 0;
+}
+
+/* u3r_blob_load(): materialize a bob atom by loading from the blob store.
+**
+**   Opens $pier/.urb/bob/<mug>/<seq> and constructs a normal atom.
+**   Returns u3_none on any error.
+*/
+u3_weak
+u3r_blob_load(u3_atom a, const c3_c* pax_c)
+{
+  u3_assert( c3y == u3a_is_bob(a) );
+
+  c3_h mug_h = u3a_bob_mug(a);
+  c3_w seq_w = u3a_bob_seq(a);
+
+  //  build path: $pier/.urb/bob/<mug>/<seq>
+  //
+  c3_c fil_c[8192];
+  snprintf(fil_c, sizeof(fil_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_w,
+           pax_c, mug_h, seq_w);
+
+  struct stat st_u;
+  if ( -1 == stat(fil_c, &st_u) ) {
+    fprintf(stderr, "retrieve: blob missing %s: %s\r\n",
+            fil_c, strerror(errno));
+    return u3_none;
+  }
+
+  c3_d len_d = (c3_d)st_u.st_size;
+  c3_i fid_i = open(fil_c, O_RDONLY);
+  if ( -1 == fid_i ) {
+    fprintf(stderr, "retrieve: blob open failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return u3_none;
+  }
+
+  //  allocate a temporary C-heap buffer, read, then copy into loom
+  //
+  c3_y* dat_y = c3_malloc(len_d);
+  c3_d  rem_d = len_d;
+  c3_y* ptr_y = dat_y;
+  while ( rem_d > 0 ) {
+    //  cap each read() to 1 GiB: macOS returns EINVAL for count > INT_MAX
+    //
+    size_t  ask_i = ( rem_d > 0x40000000UL ) ? 0x40000000UL : (size_t)rem_d;
+    ssize_t got_i = read(fid_i, ptr_y, ask_i);
+    if ( got_i <= 0 ) {
+      fprintf(stderr, "retrieve: blob read failed %s: %s\r\n",
+              fil_c, strerror(errno));
+      close(fid_i);
+      c3_free(dat_y);
+      return u3_none;
+    }
+    ptr_y += got_i;
+    rem_d -= got_i;
+  }
+  close(fid_i);
+
+  //  u3i_bytes takes c3_w (32-bit) length; safe for <4GiB blobs
+  //
+  u3_noun res = u3i_bytes((c3_w)len_d, dat_y);
+  c3_free(dat_y);
+  return res;
 }

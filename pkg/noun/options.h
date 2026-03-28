@@ -23,6 +23,7 @@
         void (*slog_f)(u3_noun);              //  function pointer for slog
         void (*sign_hold_f)(void);            //  suspend system signal regime
         void (*sign_move_f)(void);            //  restore system signal regime
+        void (*bob_free_f)(c3_h, c3_w);       //  blob freed: mug_h, seq_w
       } u3o_config;
 
     /* u3o_flag: process/system flags.

@@ -333,6 +333,12 @@ STATIC_ASSERT( u3a_vits <= u3a_min_log,
     /* u3a_is_cell: yes if noun [som] is cell.
     */
 #     define u3a_is_cell(som)    u3a_is_pom(som)
+
+    /* u3a_blob_flag: MSB of u3a_atom.len_w marks an indirect atom as a bob
+    **   (blob reference). The remaining 31 bits hold the actual data word count.
+    */
+#     define u3a_blob_flag  ((c3_w)0x80000000u)
+#     define u3a_blob_mask  ((c3_w)0x7FFFFFFFu)
 #     define u3du(som)           u3a_is_cell(som)
 
     /* u3a_h(): get head of cell [som]. Bail if [som] is not cell.
@@ -614,6 +620,34 @@ typedef struct {
           {
             return (pil_u->top_p == u3R->cap_p) ? c3y : c3n;
           }
+
+    /* u3a_is_bob(): yes if [som] is an indirect atom flagged as a bob (blob ref).
+    **   Follows naming convention: u3a_is_cat, u3a_is_pug, u3a_is_pom, u3a_is_bob.
+    */
+    static inline c3_o
+    u3a_is_bob(u3_atom som) {
+      if ( c3n == u3a_is_pug(som) ) return c3n;
+      u3a_atom* atm_u = u3a_to_ptr(som);
+      return (atm_u->len_w & u3a_blob_flag) ? c3y : c3n;
+    }
+
+    /* u3a_bob_mug(): 31-bit mug of a bob atom's content (= blob directory name).
+    **   [som] must be a bob atom.
+    */
+    static inline c3_h
+    u3a_bob_mug(u3_atom som) {
+      u3a_atom* atm_u = u3a_to_ptr(som);
+      return atm_u->mug_h;
+    }
+
+    /* u3a_bob_seq(): sequence number of a bob atom within its mug bucket.
+    **   [som] must be a bob atom.
+    */
+    static inline c3_w
+    u3a_bob_seq(u3_atom som) {
+      u3a_atom* atm_u = u3a_to_ptr(som);
+      return atm_u->buf_w[0];
+    }
 
   /**  Functions.
   **/

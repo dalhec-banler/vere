@@ -502,7 +502,10 @@ _me_gain_use(u3_noun dog)
 static inline u3_atom
 _ca_take_atom(u3a_atom* old_u)
 {
-  c3_w*     new_w = u3a_walloc(old_u->len_w + c3_wiseof(u3a_atom));
+  //  use masked length; bob atoms carry u3a_blob_flag in len_w
+  //
+  c3_w      dat_w = old_u->len_w & u3a_blob_mask;
+  c3_w*     new_w = u3a_walloc(dat_w + c3_wiseof(u3a_atom));
   u3a_atom* new_u = (u3a_atom*)(void *)new_w;
   u3_noun     new = u3a_to_pug(u3a_outa(new_u));
 
@@ -526,7 +529,7 @@ _ca_take_atom(u3a_atom* old_u)
   {
     c3_w i_w;
 
-    for ( i_w=0; i_w < old_u->len_w; i_w++ ) {
+    for ( i_w=0; i_w < dat_w; i_w++ ) {
       new_u->buf_w[i_w] = old_u->buf_w[i_w];
     }
   }
@@ -902,6 +905,14 @@ top:
           }
         }
         else {
+          //  notify blob store when a bob atom is freed
+          //
+          if (  (c3y == u3a_is_bob(dog))
+             && (u3C.bob_free_f) )
+          {
+            u3a_atom* atm_u = (u3a_atom*)box_u;
+            u3C.bob_free_f(atm_u->mug_h, atm_u->buf_w[0]);
+          }
           u3a_wfree(box_u);
         }
       }
@@ -941,6 +952,14 @@ top:
           }
         }
         else {
+          //  notify blob store when a bob atom is freed
+          //
+          if (  (c3y == u3a_is_bob(dog))
+             && (u3C.bob_free_f) )
+          {
+            u3a_atom* atm_u = (u3a_atom*)box_u;
+            u3C.bob_free_f(atm_u->mug_h, atm_u->buf_w[0]);
+          }
           u3a_wfree(box_u);
         }
       }

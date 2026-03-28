@@ -518,7 +518,12 @@ _lord_on_plea(void* ptr_v, c3_d len_d, c3_y* byt_y)
   u3t_event_trace("king ipc cue", 'B');
 #endif
 
-  jar = u3s_cue_xeno_with(god_u->sil_u, len_d, byt_y);
+  //  decode incoming message: try ram first, fall back to jam
+  //
+  jar = u3s_tap_xeno(len_d, byt_y);
+  if ( u3_none == jar ) {
+    jar = u3s_cue_xeno_with(god_u->sil_u, len_d, byt_y);
+  }
 
 #ifdef LORD_TRACE_CUE
   u3t_event_trace("king ipc cue", 'E');
@@ -663,13 +668,13 @@ _lord_writ_send(u3_lord* god_u, u3_writ* wit_u)
     u3t_event_trace("king ipc jam", 'B');
 #endif
 
-    u3s_jam_xeno(jar, &len_d, &byt_y);
+    u3s_ram_xeno(jar, &len_d, &byt_y);
 
 #ifdef LORD_TRACE_JAM
     u3t_event_trace("king ipc jam", 'E');
 #endif
 
-    u3_newt_send(&god_u->inn_u, len_d, byt_y);
+    u3_newt_send_vers(&god_u->inn_u, 0x01, len_d, byt_y);
     u3z(jar);
   }
 }
@@ -686,13 +691,13 @@ _lord_send(u3_lord* god_u, u3_noun jar)
   u3t_event_trace("king ipc jam", 'B');
 #endif
 
-  u3s_jam_xeno(jar, &len_d, &byt_y);
+  u3s_ram_xeno(jar, &len_d, &byt_y);
 
 #ifdef LORD_TRACE_JAM
   u3t_event_trace("king ipc jam", 'E');
 #endif
 
-  u3_newt_send(&god_u->inn_u, len_d, byt_y);
+  u3_newt_send_vers(&god_u->inn_u, 0x01, len_d, byt_y);
   u3z(jar);
 }
 
@@ -1198,7 +1203,12 @@ _lord_on_plea_boot(void* ptr_v, c3_d len_d, c3_y* byt_y)
 {
   _lord_boot* bot_u = ptr_v;
 
-  u3_weak jar = u3s_cue_xeno_with(bot_u->sil_u, len_d, byt_y);
+  //  decode incoming message: try ram first, fall back to jam
+  //
+  u3_weak jar = u3s_tap_xeno(len_d, byt_y);
+  if ( u3_none == jar ) {
+    jar = u3s_cue_xeno_with(bot_u->sil_u, len_d, byt_y);
+  }
   u3_noun tag, dat;
 
   if ( u3_none == jar ) {
@@ -1369,8 +1379,8 @@ u3_lord_boot(c3_c* pax_c,
   {
     c3_d  len_d;
     c3_y* byt_y;
-    u3s_jam_xeno(msg, &len_d, &byt_y);
-    u3_newt_send(&bot_u->inn_u, len_d, byt_y);
+    u3s_ram_xeno(msg, &len_d, &byt_y);
+    u3_newt_send_vers(&bot_u->inn_u, 0x01, len_d, byt_y);
     u3z(msg);
   }
 }

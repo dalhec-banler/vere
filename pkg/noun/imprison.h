@@ -95,6 +95,14 @@
           u3i_bytes(c3_w        a_w,
                     const c3_y* b_y);
 
+        /* u3i_blob(): construct a bob atom (blob reference).
+        **
+        **   [mug_h] is the 31-bit mug of the blob content (= blob directory name).
+        **   [seq_w] is the sequence number within $pier/.urb/bob/<mug>/.
+        */
+          u3_atom
+          u3i_blob(c3_h mug_h, c3_w seq_w);
+
         /* u3i_words(): Copy [a] words from [b] into an atom.
         */
           u3_atom

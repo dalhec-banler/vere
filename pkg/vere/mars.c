@@ -256,7 +256,7 @@ _mars_fact(u3_mars* mar_u,
     gif_u->sat_e = u3_gift_fact_e;
     gif_u->eve_d = mar_u->dun_d;
 
-    u3s_jam_xeno(pro, &gif_u->len_d, &gif_u->hun_y);
+    u3s_ram_xeno(pro, &gif_u->len_d, &gif_u->hun_y);
     u3z(pro);
 
     if ( !mar_u->gif_u.ent_u ) {
@@ -280,7 +280,7 @@ _mars_gift(u3_mars* mar_u, u3_noun pro)
   gif_u->sat_e = u3_gift_rest_e;
   gif_u->ptr_v = 0;
 
-  u3s_jam_xeno(pro, &gif_u->len_d, &gif_u->hun_y);
+  u3s_ram_xeno(pro, &gif_u->len_d, &gif_u->hun_y);
   u3z(pro);
 
   if ( !mar_u->gif_u.ent_u ) {
@@ -834,7 +834,7 @@ top:
           && (  (u3_gift_rest_e == gif_u->sat_e)
              || (gif_u->eve_d <= mar_u->log_u->dun_d)) )
     {
-      u3_newt_send(mar_u->out_u, gif_u->len_d, gif_u->hun_y);
+      u3_newt_send_vers(mar_u->out_u, 0x01, gif_u->len_d, gif_u->hun_y);
 
       mar_u->gif_u.ext_u = gif_u->nex_u;
       c3_free(gif_u);
@@ -902,7 +902,12 @@ u3_mars_kick(void* ram_u, c3_d len_d, c3_y* hun_y)
   //  XX optimize for stateless tasks w/ peek-next
   //
   if ( u3_mars_work_e == mar_u->sat_e ) {
-    u3_weak jar = u3s_cue_xeno_with(mar_u->sil_u, len_d, hun_y);
+    //  decode incoming message: try ram first, fall back to jam
+    //
+    u3_weak jar = u3s_tap_xeno(len_d, hun_y);
+    if ( u3_none == jar ) {
+      jar = u3s_cue_xeno_with(mar_u->sil_u, len_d, hun_y);
+    }
 
     //  parse errors are fatal
     //
@@ -1501,8 +1506,8 @@ u3_mars_work(u3_mars* mar_u)
                        u3nc(u3i_chub(mar_u->dun_d),
                             mar_u->mug_h));
 
-    u3s_jam_xeno(msg, &len_d, &hun_y);
-    u3_newt_send(mar_u->out_u, len_d, hun_y);
+    u3s_ram_xeno(msg, &len_d, &hun_y);
+    u3_newt_send_vers(mar_u->out_u, 0x01, len_d, hun_y);
     u3z(msg);
   }
 
@@ -1926,7 +1931,19 @@ u3_mars_boot(u3_mars* mar_u, c3_d len_d, c3_y* hun_y)
   }
 
   {
-    u3_weak jar = u3s_cue_xeno(len_d, hun_y);
+    //  decode boot message: try ram first, fall back to jam
+    //
+    u3_weak jar = u3s_tap_xeno(len_d, hun_y);
+    if ( u3_none == jar ) {
+      fprintf(stderr, "boot: tap failed (len=%" PRIu64 " hdr=%02x%02x%02x%02x%02x), trying cue\r\n",
+              len_d,
+              (len_d > 0) ? hun_y[0] : 0,
+              (len_d > 1) ? hun_y[1] : 0,
+              (len_d > 2) ? hun_y[2] : 0,
+              (len_d > 3) ? hun_y[3] : 0,
+              (len_d > 4) ? hun_y[4] : 0);
+      jar = u3s_cue_xeno(len_d, hun_y);
+    }
     if (  (u3_none == jar)
        || (c3n == u3r_p(jar, c3__boot, &com)) )
     {

@@ -885,3 +885,26 @@ u3i_molt(u3_noun som, ...)
   u3z(som);
   return pro;
 }
+
+/* u3i_blob(): construct a bob atom (blob reference).
+**
+**   A bob atom is an indirect atom with the MSB of len_w set.
+**   [mug_h] is the 31-bit mug of the content (stored in mug_h and used
+**   as the blob directory name).
+**   [seq_w] is the sequence number within $pier/.urb/bob/<mug>/.
+*/
+u3_atom
+u3i_blob(c3_h mug_h, c3_w seq_w)
+{
+  //  allocate: u3a_atom header + 1 word for seq_w
+  //
+  c3_w*     nov_w = u3a_walloc(1 + c3_wiseof(u3a_atom));
+  u3a_atom* vat_u = (void *)nov_w;
+
+  vat_u->use_w   = 1;
+  vat_u->mug_h   = mug_h;
+  vat_u->len_w   = 1 | u3a_blob_flag;   // 1 word of payload + bob flag
+  vat_u->buf_w[0] = seq_w;
+
+  return u3a_to_pug(u3a_outa(nov_w));
+}
