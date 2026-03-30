@@ -335,10 +335,16 @@ STATIC_ASSERT( u3a_vits <= u3a_min_log,
 #     define u3a_is_cell(som)    u3a_is_pom(som)
 
     /* u3a_blob_flag: MSB of u3a_atom.len_w marks an indirect atom as a bob
-    **   (blob reference). The remaining 31 bits hold the actual data word count.
+    **   (blob reference). The remaining bits hold the actual data word count.
+    **   In VERE64, len_w is uint64_t so we use bit 63; in 32-bit we use bit 31.
     */
-#     define u3a_blob_flag  ((c3_w)0x80000000u)
-#     define u3a_blob_mask  ((c3_w)0x7FFFFFFFu)
+#     ifdef VERE64
+#       define u3a_blob_flag  ((c3_w)0x8000000000000000ULL)
+#       define u3a_blob_mask  ((c3_w)0x7FFFFFFFFFFFFFFFULL)
+#     else
+#       define u3a_blob_flag  ((c3_w)0x80000000U)
+#       define u3a_blob_mask  ((c3_w)0x7FFFFFFFU)
+#     endif
 #     define u3du(som)           u3a_is_cell(som)
 
     /* u3a_h(): get head of cell [som]. Bail if [som] is not cell.

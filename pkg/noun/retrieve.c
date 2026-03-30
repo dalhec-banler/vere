@@ -15,6 +15,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -2376,31 +2377,24 @@ u3r_blob_load(u3_atom a, const c3_c* pax_c)
     return u3_none;
   }
 
-  //  allocate a temporary C-heap buffer, read, then copy into loom
+  //  mmap the file and copy into the loom via u3i_slab (handles >4 GiB).
   //
-  c3_y* dat_y = c3_malloc(len_d);
-  c3_d  rem_d = len_d;
-  c3_y* ptr_y = dat_y;
-  while ( rem_d > 0 ) {
-    //  cap each read() to 1 GiB: macOS returns EINVAL for count > INT_MAX
-    //
-    size_t  ask_i = ( rem_d > 0x40000000UL ) ? 0x40000000UL : (size_t)rem_d;
-    ssize_t got_i = read(fid_i, ptr_y, ask_i);
-    if ( got_i <= 0 ) {
-      fprintf(stderr, "retrieve: blob read failed %s: %s\r\n",
-              fil_c, strerror(errno));
-      close(fid_i);
-      c3_free(dat_y);
-      return u3_none;
-    }
-    ptr_y += got_i;
-    rem_d -= got_i;
-  }
+  void* map_v = mmap(0, (size_t)len_d, PROT_READ, MAP_PRIVATE, fid_i, 0);
   close(fid_i);
 
-  //  u3i_bytes takes c3_w (32-bit) length; safe for <4GiB blobs
+  if ( MAP_FAILED == map_v ) {
+    fprintf(stderr, "retrieve: blob mmap failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return u3_none;
+  }
+  madvise(map_v, (size_t)len_d, MADV_SEQUENTIAL);
+
+  //  bloq 3 = bytes; len_d = byte count
   //
-  u3_noun res = u3i_bytes((c3_w)len_d, dat_y);
-  c3_free(dat_y);
-  return res;
+  u3i_slab sab_u;
+  u3i_slab_bare(&sab_u, 3, len_d);
+  memcpy(sab_u.buf_y, map_v, (size_t)len_d);
+  munmap(map_v, (size_t)len_d);
+
+  return u3i_slab_mint_bytes(&sab_u);
 }

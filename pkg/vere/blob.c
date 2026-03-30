@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -194,6 +195,36 @@ _blob_dedup(const c3_c* pax_c, c3_h mug_h, c3_w max_w,
   return 0;
 }
 
+/* _blob_mug(): compute a 31-bit mug suitable for blob bucketing.
+**
+**   u3r_mug_bytes takes c3_h (uint32_t) for the length, so we cap each
+**   window at 0xFFFFFFFF bytes.  For files > 4 GiB we hash the first
+**   window, mix in the high bits of length, and mix in the last window
+**   so that files of identical size but different tail content get
+**   distinct buckets.
+*/
+static c3_h
+_blob_mug(const c3_y* dat_y, c3_d len_d)
+{
+  //  cap first window to UINT32_MAX to avoid hashing 0 bytes
+  //
+  c3_h win_h = ( len_d > 0xFFFFFFFFULL ) ? 0xFFFFFFFFu : (c3_h)len_d;
+  c3_h mug_h = u3r_mug_bytes(dat_y, win_h);
+
+  //  for files larger than 4 GiB, also fold in the high length bits
+  //  and hash the last 4 GiB window for tail sensitivity
+  //
+  c3_h hi_h = (c3_h)(len_d >> 32);
+  if ( hi_h ) {
+    mug_h = u3r_mug_both(mug_h, hi_h);
+    //  hash the final window (last min(len_d, 0xFFFFFFFF) bytes)
+    c3_d off_d  = len_d > 0xFFFFFFFFULL ? len_d - 0xFFFFFFFFULL : 0;
+    c3_h tail_h = u3r_mug_bytes(dat_y + off_d, (c3_h)(len_d - off_d));
+    mug_h = u3r_mug_both(mug_h, tail_h);
+  }
+  return mug_h;
+}
+
 /* u3_blob_save(): write bytes to blob store.
 */
 c3_o
@@ -203,10 +234,7 @@ u3_blob_save(const c3_c* pax_c,
              c3_h*       mug_h,
              c3_w*       seq_w)
 {
-  //  compute mug of atom bytes
-  //    XX: u3r_mug_bytes takes c3_h len — safe for <=4GiB
-  c3_h len_h = (c3_h)len_d;
-  *mug_h = u3r_mug_bytes(dat_y, len_h);
+  *mug_h = _blob_mug(dat_y, len_d);
 
   //  acquire lock and get next sequence number
   c3_w nex_w = _blob_lock_acquire(pax_c, *mug_h);
@@ -257,7 +285,11 @@ u3_blob_save(const c3_c* pax_c,
   return c3y;
 }
 
-/* u3_blob_save_fd(): streaming write from open file descriptor.
+/* u3_blob_save_fd(): write from open file descriptor into the blob store.
+**
+**   Uses mmap() to avoid a large malloc: the OS pages in only what
+**   _blob_mug and the dedup scan actually touch, and can evict cold pages
+**   immediately.  Works for files of any size that fit in the address space.
 */
 c3_o
 u3_blob_save_fd(const c3_c* pax_c,
@@ -266,46 +298,28 @@ u3_blob_save_fd(const c3_c* pax_c,
                 c3_h*       mug_h,
                 c3_w*       seq_w)
 {
-  //  We need the full content in memory to compute the mug (MurmurHash3 is
-  //  not incremental) and to run the dedup check.  Read into a heap buffer
-  //  in BLOB_IO_MAX-sized chunks to avoid the EINVAL that macOS returns when
-  //  a single read() count exceeds INT_MAX.
-  //
-  //  XX: u3r_mug_bytes len is c3_h (uint32_t) — mug is unreliable for
-  //      files larger than 4 GiB.  Tracked as a known limitation.
-  //
-  if ( len_d > (c3_d)SIZE_MAX ) {
-    fprintf(stderr, "blob: file too large to map (%" PRIc3_d " bytes)\r\n",
-            len_d);
+  if ( 0 == len_d ) {
+    fprintf(stderr, "blob: refusing to save empty file\r\n");
     return c3n;
   }
 
-  c3_y* buf_y = c3_malloc(len_d);
-  if ( !buf_y ) {
-    fprintf(stderr, "blob: failed to allocate %" PRIc3_d " bytes\r\n", len_d);
+  void* map_v = mmap(0, (size_t)len_d, PROT_READ, MAP_PRIVATE, fid_i, 0);
+  if ( MAP_FAILED == map_v ) {
+    fprintf(stderr, "blob: mmap failed (%" PRIc3_d " bytes): %s\r\n",
+            len_d, strerror(errno));
     return c3n;
   }
+  madvise(map_v, (size_t)len_d, MADV_SEQUENTIAL);
 
-  c3_d   rem_d = len_d;
-  c3_y*  ptr_y = buf_y;
-  while ( rem_d > 0 ) {
-    size_t  ask_i = ( rem_d < BLOB_IO_MAX ) ? (size_t)rem_d : BLOB_IO_MAX;
-    ssize_t got_i = read(fid_i, ptr_y, ask_i);
-    if ( got_i <= 0 ) {
-      fprintf(stderr, "blob: read failed: %s\r\n", strerror(errno));
-      c3_free(buf_y);
-      return c3n;
-    }
-    ptr_y += got_i;
-    rem_d -= got_i;
-  }
-
-  c3_o ret_o = u3_blob_save(pax_c, buf_y, len_d, mug_h, seq_w);
-  c3_free(buf_y);
+  c3_o ret_o = u3_blob_save(pax_c, (const c3_y*)map_v, len_d, mug_h, seq_w);
+  munmap(map_v, (size_t)len_d);
   return ret_o;
 }
 
 /* u3_blob_load(): read blob into a loom atom.
+**
+**   Uses mmap() and u3i_slab to handle blobs of any size, including >4 GiB.
+**   The mapping is released immediately after the loom copy.
 */
 u3_weak
 u3_blob_load(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
@@ -328,27 +342,25 @@ u3_blob_load(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
     return u3_none;
   }
 
-  c3_y* dat_y = c3_malloc(len_d);
-  c3_d  rem_d = len_d;
-  c3_y* ptr_y = dat_y;
-  while ( rem_d > 0 ) {
-    size_t  ask_i = ( rem_d < BLOB_IO_MAX ) ? (size_t)rem_d : BLOB_IO_MAX;
-    ssize_t got_i = read(fid_i, ptr_y, ask_i);
-    if ( got_i <= 0 ) {
-      fprintf(stderr, "blob: read failed on %s: %s\r\n",
-              fil_c, strerror(errno));
-      close(fid_i);
-      c3_free(dat_y);
-      return u3_none;
-    }
-    ptr_y += got_i;
-    rem_d -= got_i;
-  }
+  void* map_v = mmap(0, (size_t)len_d, PROT_READ, MAP_PRIVATE, fid_i, 0);
   close(fid_i);
 
-  u3_noun res = u3i_bytes((c3_w)len_d, dat_y);
-  c3_free(dat_y);
-  return res;
+  if ( MAP_FAILED == map_v ) {
+    fprintf(stderr, "blob: mmap failed on %s: %s\r\n",
+            fil_c, strerror(errno));
+    return u3_none;
+  }
+  madvise(map_v, (size_t)len_d, MADV_SEQUENTIAL);
+
+  //  use u3i_slab (c3_d length) to correctly handle blobs >4 GiB.
+  //  bloq 3 = bytes; len_d = byte count.
+  //
+  u3i_slab sab_u;
+  u3i_slab_bare(&sab_u, 3, len_d);
+  memcpy(sab_u.buf_y, map_v, (size_t)len_d);
+  munmap(map_v, (size_t)len_d);
+
+  return u3i_slab_mint_bytes(&sab_u);
 }
 
 /* u3_blob_exists(): check whether a blob file exists.
