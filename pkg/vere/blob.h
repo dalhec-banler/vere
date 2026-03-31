@@ -24,6 +24,15 @@
       void
       u3_blob_init(const c3_c* pax_c);
 
+    /* u3_blob_stg_init(): initialize staging area; create .urb/bob/stg/ if needed.
+    **
+    ** The staging dir holds mkstemp(3) temp files written by Earth before
+    ** they are handed to Mars for rename(2) into the final bob/<mug>/<seq>
+    ** location.  Cleaned (emptied) on every boot.
+    */
+      void
+      u3_blob_stg_init(const c3_c* pax_c);
+
     /* u3_blob_save(): write bytes to blob store.
     **
     ** Deduplicates within the mug bucket (byte-for-byte comparison).
@@ -67,6 +76,19 @@
     */
       void
       u3_blob_delete(const c3_c* pax_c, c3_h mug_h, c3_w seq_w);
+
+    /* u3_blob_install_stg(): install a staging file into the blob store.
+    **
+    ** [stg_c] is the path of a temp file in $pier/.urb/bob/stg/.
+    ** Computes mug, deduplicates, then rename(2)s into bob/<mug>/<seq>.
+    ** The staging file is always consumed on success.
+    ** On success, returns c3y and sets *mug_h and *seq_w.
+    */
+      c3_o
+      u3_blob_install_stg(const c3_c* pax_c,
+                          const c3_c* stg_c,
+                          c3_h*       mug_h,
+                          c3_w*       seq_w);
 
     /* u3_blob_path(): write filesystem path for a blob into [out_c].
     **

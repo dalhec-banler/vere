@@ -11,6 +11,7 @@
 #include "ivory.h"
 #include "ur/ur.h"
 #include "db/lmdb.h"
+#include "blob.h"
 #include <mars.h>
 #include <stdio.h>
 
@@ -723,6 +724,56 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
     case c3__exit: {
       u3z(jar);
       mar_u->sat_e = u3_mars_exit_e;
+    } break;
+
+    case c3__blob: {
+      //  [%blob path-atom]  — install staging file from king
+      //
+      c3_h mug_h = 0;
+      c3_w seq_w = 0;
+      c3_o ok_o  = c3n;
+
+      //  extract path string from atom
+      //
+      c3_d len_d = u3r_met(3, dat);
+      if ( len_d > 0 && len_d < 8192 ) {
+        c3_c stg_c[8192] = {0};
+        u3r_bytes(0, (c3_w)len_d, (c3_y*)stg_c, dat);
+
+        ok_o = u3_blob_install_stg(u3C.dir_c, stg_c, &mug_h, &seq_w);
+
+        if ( c3y == ok_o ) {
+          //  record in blob bank with initial refcount=1
+          //
+          c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+          u3_noun key = u3i_chub(bid_d);
+          u3_weak old = u3h_get(u3H->ban_u.blb_p, key);
+          if ( u3_none == old ) {
+            //  new blob — insert with refcount 1
+            u3h_put(u3H->ban_u.blb_p, key, u3i_word(1));
+          }
+          else {
+            //  duplicate install — bump refcount
+            c3_w ref_w = 0;
+            u3r_safe_word(old, &ref_w);
+            u3h_put(u3H->ban_u.blb_p, key, u3i_word(ref_w + 1));
+          }
+          u3z(key);
+        }
+      }
+      else {
+        fprintf(stderr, "mars: blob: bad path atom len %" PRIu64 "\r\n", len_d);
+      }
+
+      u3z(jar);
+
+      if ( c3y == ok_o ) {
+        _mars_gift(mar_u, u3nt(c3__blob, c3y,
+                               u3nc(u3i_word(mug_h), u3i_word(seq_w))));
+      }
+      else {
+        _mars_gift(mar_u, u3nc(c3__blob, c3n));
+      }
     } break;
   }
 

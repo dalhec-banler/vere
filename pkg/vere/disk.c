@@ -6,6 +6,7 @@
 #include "version.h"
 #include "db/lmdb.h"
 #include "blob.h"
+#include <dirent.h>
 #include <types.h>
 
 #include "migrate.h"
@@ -117,19 +118,6 @@ _disk_commit_start(u3_disk* log_u)
   //
   uv_queue_work(u3L, &log_u->sav_u.ted_u, _disk_commit_cb,
                                           _disk_commit_after_cb);
-}
-
-/* _disk_bob_free_cb(): called by noun allocator when a bob atom is freed.
-**
-**   Deletes the blob file from the store. The pier path is read from
-**   u3C.dir_c, which is set before any nouns are allocated.
-*/
-static void
-_disk_bob_free_cb(c3_h mug_h, c3_w seq_w)
-{
-  if ( u3C.dir_c ) {
-    u3_blob_delete(u3C.dir_c, mug_h, seq_w);
-  }
 }
 
 /* u3_disk_etch(): serialize an event for persistence. RETAIN [eve]
@@ -1581,6 +1569,63 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
   // cleanup
   c3_free(sot_d);
 
+  //  GC: sweep blob store for orphaned blobs (not in ban_u.blb_p)
+  //
+  //    Any blob not registered in the bank is an orphan from a crashed
+  //    or incomplete install.  Safe to delete.
+  //
+  {
+    c3_c bob_c[8192];
+    snprintf(bob_c, sizeof(bob_c), "%s/.urb/bob", log_u->dir_u->pax_c);
+
+    DIR* top_u = opendir(bob_c);
+    if ( top_u ) {
+      struct dirent* mug_e;
+      while ( (mug_e = readdir(top_u)) ) {
+        if ( '.' == mug_e->d_name[0] || 0 == strcmp(mug_e->d_name, "stg") ) {
+          continue;
+        }
+        c3_h mug_h = (c3_h)strtoul(mug_e->d_name, 0, 10);
+        if ( 0 == mug_h ) {
+          continue;
+        }
+
+        c3_c mug_c[8192];
+        snprintf(mug_c, sizeof(mug_c), "%s/%s", bob_c, mug_e->d_name);
+
+        DIR* bkt_u = opendir(mug_c);
+        if ( !bkt_u ) {
+          continue;
+        }
+        struct dirent* seq_e;
+        while ( (seq_e = readdir(bkt_u)) ) {
+          if ( '.' == seq_e->d_name[0] || 0 == strcmp(seq_e->d_name, "lock") ) {
+            continue;
+          }
+          c3_w seq_w = (c3_w)strtoul(seq_e->d_name, 0, 10);
+          if ( 0 == seq_w ) {
+            continue;
+          }
+
+          c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+          u3_noun key = u3i_chub(bid_d);
+          u3_weak ref = u3h_get(u3H->ban_u.blb_p, key);
+          u3z(key);
+
+          if ( u3_none == ref ) {
+            //  orphan — delete
+            u3_blob_delete(log_u->dir_u->pax_c, mug_h, seq_w);
+            fprintf(stderr, "chop: gc: deleted orphan blob %" PRIc3_h
+                            "/%" PRIc3_w "\r\n", mug_h, seq_w);
+          }
+          //  else: ref > 0, keep it
+        }
+        closedir(bkt_u);
+      }
+      closedir(top_u);
+    }
+  }
+
   // success
   fprintf(stderr, "chop: event log truncation complete\r\n");
 }
@@ -2220,9 +2265,10 @@ u3_disk_make(c3_c* pax_c)
     }
   }
 
-  //  make $pier/.urb/bob (blob store)
+  //  make $pier/.urb/bob (blob store) and .urb/bob/stg/ (staging area)
   //
   u3_blob_init(pax_c);
+  u3_blob_stg_init(pax_c);
 
   return c3y;
 }
@@ -2292,13 +2338,11 @@ u3_disk_load(c3_c* pax_c, u3_disk_load_e lod_e)
       return 0;
     }
 
-  //  initialize blob store (creates .urb/bob/ if needed)
+  //  initialize blob store (creates .urb/bob/ if needed) and staging area
   //
   u3_blob_init(pax_c);
+  u3_blob_stg_init(pax_c);
 
-  //  register blob-free callback so noun GC can delete orphaned blobs
-  //
-  u3C.bob_free_f = _disk_bob_free_cb;
 
     //  XX move this into u3_disk_make
     //

@@ -18,6 +18,34 @@
         u3_noun yot;                      //  cached gates
       } u3v_arvo;
 
+    /* u3v_lease: active staging reservation in the blob store.
+    **
+    **   Created when Mars installs a blob (receives %blob-install).
+    **   Holds one u3a_blob.use_w ref until the owning event is committed
+    **   to the event log (at which point the ref becomes an event-log ref),
+    **   or until the lease expires (TTL).
+    */
+      typedef struct _u3v_lease {
+        c3_d  res_d;        //  reservation id (monotonic counter)
+        c3_d  exp_d;        //  expiry time (Unix ms); 0 = no expiry
+        c3_h  mug_h;        //  blob mug
+        c3_w  seq_w;        //  blob seq within mug bucket
+        c3_c  stg_c[4096];  //  staging path that was installed (for logging)
+      } u3v_lease;
+
+    /* u3v_bank: loom-resident blob bank.
+    **
+    **   Lives in u3v_home, checkpointed in image.bin.
+    **   blb_p: HAMT mapping blob_id (u64 = mug<<32|seq) -> u3a_blob loom offset
+    **   res_p: HAMT mapping res_id  (u64)               -> u3v_lease loom offset
+    **   nxt_d: monotonic reservation counter
+    */
+      typedef struct _u3v_bank {
+        u3p(u3h_root) blb_p;  //  blob_id -> u3a_blob*
+        u3p(u3h_root) res_p;  //  res_id  -> u3v_lease*
+        c3_d          nxt_d;  //  next reservation id
+      } u3v_bank;
+
     /* u3v_home: all internal (within image) state.
     **       NB: version must first for ease of migration.
     */
@@ -25,6 +53,7 @@
         u3v_version ver_d;                //  version number
         c3_d        pam_d;                //  parameters
         u3v_arvo    arv_u;                //  arvo state
+        u3v_bank    ban_u;                //  blob bank
         u3a_road    rod_u;                //  storage state
       } u3v_home;
 

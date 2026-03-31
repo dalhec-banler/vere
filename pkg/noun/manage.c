@@ -529,6 +529,12 @@ _pave_parts(void)
   u3R->lop_p     = u3h_new();
   u3R->tim       = u3_nul;
   u3R->how.fag_w = 0;
+
+  //  initialize blob bank HAMTs
+  //
+  u3H->ban_u.blb_p = u3h_new();
+  u3H->ban_u.res_p = u3h_new();
+  u3H->ban_u.nxt_d = 0;
 }
 
 static c3_d
@@ -671,6 +677,15 @@ _find_home(void)
   //
   if (!u3R->lop_p) {
     u3R->lop_p = u3h_new();
+  }
+
+  //  lazy-init blob bank HAMTs (zero if snapshot predates blob store)
+  //
+  if ( !u3H->ban_u.blb_p ) {
+    u3H->ban_u.blb_p = u3h_new();
+  }
+  if ( !u3H->ban_u.res_p ) {
+    u3H->ban_u.res_p = u3h_new();
   }
 }
 

@@ -3,6 +3,7 @@
 #include "blob.h"
 #include "vere.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -62,6 +63,57 @@ u3_blob_init(const c3_c* pax_c)
     fprintf(stderr, "blob: failed to create %s: %s\r\n",
             bob_c, strerror(errno));
   }
+}
+
+/* _blob_stg_dir(): write path to $pier/.urb/bob/stg/ into [out_c].
+*/
+static void
+_blob_stg_dir(c3_c* out_c, const c3_c* pax_c)
+{
+  snprintf(out_c, 8192, "%s/.urb/bob/stg", pax_c);
+}
+
+/* _blob_stg_rm_rf(): recursively delete all files inside staging dir.
+**
+** Only removes regular files, not subdirectories.  Staging should
+** only ever contain flat temp files so this is sufficient.
+*/
+static void
+_blob_stg_clean(const c3_c* stg_c)
+{
+  DIR* dir_u = opendir(stg_c);
+  if ( !dir_u ) {
+    return;
+  }
+  struct dirent* ent_u;
+  while ( (ent_u = readdir(dir_u)) ) {
+    if ( '.' == ent_u->d_name[0] ) {
+      continue;
+    }
+    c3_c fil_c[8192];
+    snprintf(fil_c, sizeof(fil_c), "%s/%s", stg_c, ent_u->d_name);
+    c3_unlink(fil_c);
+  }
+  closedir(dir_u);
+}
+
+/* u3_blob_stg_init(): initialize staging area; create/clean .urb/bob/stg/.
+*/
+void
+u3_blob_stg_init(const c3_c* pax_c)
+{
+  c3_c stg_c[8192];
+  _blob_stg_dir(stg_c, pax_c);
+
+  if ( 0 != c3_mkdir(stg_c, 0700) && EEXIST != errno ) {
+    fprintf(stderr, "blob: failed to create staging dir %s: %s\r\n",
+            stg_c, strerror(errno));
+    return;
+  }
+
+  //  clean any leftover temp files from a prior crash
+  //
+  _blob_stg_clean(stg_c);
 }
 
 /* _blob_lock_acquire(): acquire mug bucket lock, return next seq number.
@@ -387,4 +439,118 @@ u3_blob_delete(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
     fprintf(stderr, "blob: failed to delete %s: %s\r\n",
             fil_c, strerror(errno));
   }
+}
+
+/* u3_blob_install_stg(): install a staging file into the blob store.
+**
+**   [stg_c] is the path to a temp file under $pier/.urb/bob/stg/.
+**   Computes the mug of its content, checks for duplicates, then either
+**   renames the staging file into bob/<mug>/<seq> (no dup) or unlinks it
+**   (dup found).  On success sets *mug_h and *seq_w.
+**
+**   The staging file is always consumed (renamed or unlinked) on success.
+**   On failure the staging file is left in place.
+*/
+c3_o
+u3_blob_install_stg(const c3_c* pax_c,
+                    const c3_c* stg_c,
+                    c3_h*       mug_h,
+                    c3_w*       seq_w)
+{
+  struct stat st_u;
+  if ( -1 == stat(stg_c, &st_u) ) {
+    fprintf(stderr, "blob: install_stg: stat failed on %s: %s\r\n",
+            stg_c, strerror(errno));
+    return c3n;
+  }
+
+  c3_d len_d = (c3_d)st_u.st_size;
+
+  if ( 0 == len_d ) {
+    fprintf(stderr, "blob: install_stg: refusing empty staging file %s\r\n",
+            stg_c);
+    return c3n;
+  }
+
+  c3_i fid_i = open(stg_c, O_RDONLY);
+  if ( -1 == fid_i ) {
+    fprintf(stderr, "blob: install_stg: open failed on %s: %s\r\n",
+            stg_c, strerror(errno));
+    return c3n;
+  }
+
+  void* map_v = mmap(0, (size_t)len_d, PROT_READ, MAP_PRIVATE, fid_i, 0);
+  close(fid_i);
+
+  if ( MAP_FAILED == map_v ) {
+    fprintf(stderr, "blob: install_stg: mmap failed on %s: %s\r\n",
+            stg_c, strerror(errno));
+    return c3n;
+  }
+  madvise(map_v, (size_t)len_d, MADV_SEQUENTIAL);
+
+  *mug_h = _blob_mug((const c3_y*)map_v, len_d);
+
+  //  acquire mug-bucket lock and get next sequence number
+  //
+  c3_w nex_w = _blob_lock_acquire(pax_c, *mug_h);
+  if ( 0 == nex_w ) {
+    munmap(map_v, (size_t)len_d);
+    return c3n;
+  }
+
+  //  check for duplicate content
+  //
+  c3_w dup_w = _blob_dedup(pax_c, *mug_h, nex_w,
+                            (const c3_y*)map_v, len_d);
+  munmap(map_v, (size_t)len_d);
+
+  if ( 0 != dup_w ) {
+    //  duplicate found — consume staging file and return existing seq
+    //
+    c3_unlink(stg_c);
+    *seq_w = dup_w;
+    return c3y;
+  }
+
+  //  rename staging file into final location
+  //
+  c3_c dst_c[8192];
+  u3_blob_path(dst_c, pax_c, *mug_h, nex_w);
+
+  if ( 0 != rename(stg_c, dst_c) ) {
+    //  rename can fail cross-device; fall back to copy-and-unlink
+    //
+    c3_i src_i = open(stg_c, O_RDONLY);
+    c3_i dst_i = open(dst_c, O_WRONLY | O_CREAT | O_EXCL, 0400);
+    if ( -1 == src_i || -1 == dst_i ) {
+      fprintf(stderr, "blob: install_stg: rename+fallback failed on %s: %s\r\n",
+              stg_c, strerror(errno));
+      if ( -1 != src_i ) close(src_i);
+      if ( -1 != dst_i ) { close(dst_i); unlink(dst_c); }
+      return c3n;
+    }
+
+    //  copy in chunks
+    //
+    c3_y buf_y[65536];
+    ssize_t red_i;
+    while ( (red_i = read(src_i, buf_y, sizeof(buf_y))) > 0 ) {
+      if ( write(dst_i, buf_y, (size_t)red_i) != red_i ) {
+        fprintf(stderr, "blob: install_stg: copy write failed: %s\r\n",
+                strerror(errno));
+        close(src_i);
+        close(dst_i);
+        unlink(dst_c);
+        return c3n;
+      }
+    }
+    fsync(dst_i);
+    close(src_i);
+    close(dst_i);
+    c3_unlink(stg_c);
+  }
+
+  *seq_w = nex_w;
+  return c3y;
 }

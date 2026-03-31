@@ -85,6 +85,10 @@ _lord_writ_free(u3_writ* wit_u)
     case u3_writ_peek: {
       u3z(wit_u->pek_u->sam);
     } break;
+
+    case u3_writ_blob: {
+      c3_free(wit_u->blb_u.pax_c);
+    } break;
   }
 
   c3_free(wit_u);
@@ -156,6 +160,7 @@ _lord_writ_str(u3_writ_type typ_e)
     case u3_writ_live: return "live";
     case u3_writ_exit: return "exit";
     case u3_writ_quiz: return "quiz";
+    case u3_writ_blob: return "blob";
   }
 }
 
@@ -403,6 +408,55 @@ _lord_plea_quiz(u3_lord* god_u, u3_noun dat)
   wit_u->qiz_u.qiz_f(wit_u->qiz_u.qiz_m, wit_u->qiz_u.ptr_v, dat);
 }
 
+/* _lord_plea_blob(): handle blob-ack / blob-nack from serf.
+**
+** Expected dat: [c3y mug seq] on success, [c3n reason] on failure.
+*/
+static void
+_lord_plea_blob(u3_lord* god_u, u3_noun dat)
+{
+  u3_writ* wit_u = _lord_writ_need(god_u, u3_writ_blob);
+
+  if ( !wit_u ) {
+    u3z(dat);
+    return;
+  }
+
+  void*   ptr_v = wit_u->blb_u.ptr_v;
+  void  (*fun_f)(void*, c3_h, c3_w, c3_o) = wit_u->blb_u.fun_f;
+  c3_free(wit_u->blb_u.pax_c);
+  c3_free(wit_u);
+
+  if ( c3n == u3a_is_cell(dat) ) {
+    //  malformed response — treat as nack
+    //
+    if ( fun_f ) fun_f(ptr_v, 0, 0, c3n);
+    u3z(dat);
+    return;
+  }
+
+  if ( c3y == u3h(dat) ) {
+    //  [c3y mug seq]
+    //
+    u3_noun mug_a, seq_a;
+    c3_h mug_h = 0;
+    c3_w seq_w = 0;
+
+    if ( (c3y == u3r_cell(u3t(dat), &mug_a, &seq_a)) ) {
+      u3r_safe_half(mug_a, &mug_h);
+      u3r_safe_word(seq_a, &seq_w);
+    }
+    if ( fun_f ) fun_f(ptr_v, mug_h, seq_w, c3y);
+  }
+  else {
+    //  [c3n reason]
+    //
+    if ( fun_f ) fun_f(ptr_v, 0, 0, c3n);
+  }
+
+  u3z(dat);
+}
+
 /* _lord_work_spin(): update spinner if more work is in progress.
  */
  static void
@@ -577,6 +631,10 @@ _lord_on_plea(void* ptr_v, c3_d len_d, c3_y* byt_y)
     case c3__quiz: {
       _lord_plea_quiz(god_u, u3k(dat));
     }
+
+    case c3__blob: {
+      _lord_plea_blob(god_u, u3k(dat));
+    } break;
   }
 
   u3z(jar);
@@ -641,6 +699,14 @@ _lord_writ_make(u3_lord* god_u, u3_writ* wit_u)
 
     case u3_writ_exit: {
       msg = u3nc(c3__exit, u3_nul);
+    } break;
+
+    case u3_writ_blob: {
+      //  [%blob path-atom]  — path is a null-terminated C string
+      //
+      msg = u3nc(c3__blob,
+                 u3i_bytes(strlen(wit_u->blb_u.pax_c),
+                           (const c3_y*)wit_u->blb_u.pax_c));
     } break;
   }
 
@@ -760,6 +826,23 @@ u3_lord_work(u3_lord* god_u, u3_ovum* egg_u, u3_noun job)
   }
 
   _lord_send(god_u, _lord_writ_make(god_u, wit_u));
+}
+
+/* u3_lord_blob_install(): request Mars install a staged blob file.
+*/
+void
+u3_lord_blob_install(u3_lord* god_u,
+                     c3_c*    pax_c,
+                     void*    ptr_v,
+                     void   (*fun_f)(void*, c3_h, c3_w, c3_o))
+{
+  u3_writ* wit_u = _lord_writ_new(god_u);
+  wit_u->typ_e       = u3_writ_blob;
+  wit_u->blb_u.pax_c = pax_c;
+  wit_u->blb_u.ptr_v = ptr_v;
+  wit_u->blb_u.fun_f = fun_f;
+
+  _lord_writ_send(god_u, wit_u);
 }
 
 /* u3_lord_save(): save a snapshot.

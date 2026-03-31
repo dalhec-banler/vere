@@ -905,14 +905,6 @@ top:
           }
         }
         else {
-          //  notify blob store when a bob atom is freed
-          //
-          if (  (c3y == u3a_is_bob(dog))
-             && (u3C.bob_free_f) )
-          {
-            u3a_atom* atm_u = (u3a_atom*)box_u;
-            u3C.bob_free_f(atm_u->mug_h, atm_u->buf_w[0]);
-          }
           u3a_wfree(box_u);
         }
       }
@@ -952,14 +944,6 @@ top:
           }
         }
         else {
-          //  notify blob store when a bob atom is freed
-          //
-          if (  (c3y == u3a_is_bob(dog))
-             && (u3C.bob_free_f) )
-          {
-            u3a_atom* atm_u = (u3a_atom*)box_u;
-            u3C.bob_free_f(atm_u->mug_h, atm_u->buf_w[0]);
-          }
           u3a_wfree(box_u);
         }
       }

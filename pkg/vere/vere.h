@@ -451,7 +451,8 @@
           u3_writ_peek = 1,
           u3_writ_live = 2,
           u3_writ_exit = 3,
-          u3_writ_quiz = 4
+          u3_writ_quiz = 4,
+          u3_writ_blob = 5    //  blob-install request
         } u3_writ_type;
 
       /* u3_writ: ipc message from urth to mars
@@ -470,6 +471,11 @@
               void*        ptr_v;               //    driver
               void (*qiz_f)(c3_m, void*, u3_noun);  //  callback
             } qiz_u;                                //
+            struct {                            //  blob-install:
+              c3_c*        pax_c;               //    staging path (heap-alloc'd)
+              void*        ptr_v;               //    callback context
+              void (*fun_f)(void*, c3_h, c3_w, c3_o);  //  ack cb(ctx, mug, seq, ok)
+            } blb_u;                            //
           };
         } u3_writ;
 
@@ -1041,6 +1047,18 @@
       */
         void
         u3_lord_peek(u3_lord* god_u, u3_pico* pic_u);
+
+      /* u3_lord_blob_install(): request Mars install a staged blob file.
+      **
+      ** [pax_c] is the path to a temp file in $pier/.urb/bob/stg/.
+      ** When Mars finishes (mug+dedup+rename), it calls fun_f(ptr_v, mug, seq, ok).
+      ** Ownership of [pax_c] passes to the writ; do not free it.
+      */
+        void
+        u3_lord_blob_install(u3_lord* god_u,
+                             c3_c*    pax_c,
+                             void*    ptr_v,
+                             void   (*fun_f)(void*, c3_h, c3_w, c3_o));
 
     /**  Filesystem (async).
     **/
