@@ -8,6 +8,7 @@
 #include "blob.h"
 #include <dirent.h>
 #include <types.h>
+#include <stdlib.h>
 
 #include "migrate.h"
 #ifdef VERE64
@@ -990,26 +991,6 @@ _disk_epoc_meta(u3_disk*    log_u,
   return c3y;
 }
 
-/* _disk_epoc_blobs_init(): create empty blobs.txt in epoch directory.
-*/
-static c3_o
-_disk_epoc_blobs_init(const c3_c* epo_c)
-{
-  c3_c blb_c[8193];
-  snprintf(blb_c, sizeof(blb_c), "%s/blobs.txt", epo_c);
-
-  //  create empty blobs.txt (open for append, creating if needed)
-  c3_i fid_i = open(blb_c, O_WRONLY | O_CREAT | O_APPEND, 0600);
-  if ( -1 == fid_i ) {
-    fprintf(stderr, "disk: failed to create blobs.txt in %s: %s\r\n",
-                    epo_c, strerror(errno));
-    return c3n;
-  }
-  fsync(fid_i);
-  close(fid_i);
-  return c3y;
-}
-
 /* _disk_epoc_zero: make epoch zero.
 */
 static c3_o
@@ -1081,12 +1062,6 @@ _disk_epoc_zero(c3_c* pax_c)
   }
   close(epo_i);
 #endif
-
-  //  create empty blobs.txt for GC tracking
-  //
-  if ( c3n == _disk_epoc_blobs_init(epo_c) ) {
-    goto fail3;
-  }
 
   //  success
   return c3y;
@@ -1225,12 +1200,6 @@ _disk_epoc_roll(u3_disk* log_u, c3_d epo_d)
 
   close(epo_i);
 #endif
-
-  //  create empty blobs.txt for GC tracking
-  //
-  if ( c3n == _disk_epoc_blobs_init(epo_c) ) {
-    goto fail3;
-  }
 
   fprintf(stderr, "disk: created epoch %" PRIc3_d "\r\n", epo_d);
 
@@ -1537,6 +1506,52 @@ _disk_vere_diff(u3_disk* log_u)
   return c3n;
 }
 
+/* _disk_bid_cmp(): bsearch/qsort comparator for c3_d blob IDs.
+*/
+static int
+_disk_bid_cmp(const void* a_v, const void* b_v)
+{
+  c3_d a_d = *(const c3_d*)a_v;
+  c3_d b_d = *(const c3_d*)b_v;
+  return (a_d > b_d) - (a_d < b_d);
+}
+
+/* _disk_blb_rebuild(): build a C-heap sorted array of live blob IDs.
+**
+**   Scans the home road heap page directory for bob atoms — O(heap_pages),
+**   much faster than u3a_walk_fore on the full noun tree, and does NOT
+**   allocate in the loom (safe when the loom may be undersized at chop time).
+**
+**   Filters the raw heap scan results by verifying each candidate blob file
+**   actually exists on disk, eliminating false positives from allocated chunks
+**   (cells, HAMT nodes, etc.) that happen to match the bob atom pattern.
+**
+**   Returns a malloc'd sorted array of c3_d blob IDs (mug<<32|seq).
+**   Sets [*out_z] to the count.  Caller must c3_free() the result.
+*/
+static c3_d*
+_disk_blb_rebuild(u3_disk* log_u, c3_z* out_z)
+{
+  c3_z  raw_z = 0;
+  c3_d* raw_d = u3a_find_bobs(&raw_z);
+
+  //  filter: keep only candidates whose blob file actually exists
+  //
+  c3_z  liv_z = 0;
+  for ( c3_z i_z = 0; i_z < raw_z; i_z++ ) {
+    c3_h mug_h = (c3_h)(raw_d[i_z] >> 32);
+    c3_w seq_w = (c3_w)(raw_d[i_z] & 0xFFFFFFFF);
+    if ( c3y == u3_blob_exists(log_u->dir_u->pax_c, mug_h, seq_w) ) {
+      raw_d[liv_z++] = raw_d[i_z];
+    }
+  }
+  *out_z = liv_z;
+
+  fprintf(stderr, "chop: gc: found %" PRIc3_z " live blob(s) in heap "
+                  "(%" PRIc3_z " candidates)\r\n", liv_z, raw_z);
+  return raw_d;
+}
+
 /* u3_disk_chop(): delete all but the latest 2 epocs.
 */
 void
@@ -1569,10 +1584,15 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
   // cleanup
   c3_free(sot_d);
 
-  //  GC: sweep blob store for orphaned blobs (not in ban_u.blb_p)
+  //  build live blob set from heap scan (no loom allocation)
   //
-  //    Any blob not registered in the bank is an orphan from a crashed
-  //    or incomplete install.  Safe to delete.
+  c3_z  liv_z = 0;
+  c3_d* liv_d = _disk_blb_rebuild(log_u, &liv_z);
+
+  //  GC: sweep blob store for orphaned blobs (not in live set)
+  //
+  //    Any blob not referenced by a live bob atom is an orphan.
+  //    Safe to delete.
   //
   {
     c3_c bob_c[8192];
@@ -1608,23 +1628,24 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
           }
 
           c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-          u3_noun key = u3i_chub(bid_d);
-          u3_weak ref = u3h_get(u3H->ban_u.blb_p, key);
-          u3z(key);
+          c3_d* hit_d = bsearch(&bid_d, liv_d, liv_z, sizeof(c3_d),
+                                _disk_bid_cmp);
 
-          if ( u3_none == ref ) {
+          if ( !hit_d ) {
             //  orphan — delete
             u3_blob_delete(log_u->dir_u->pax_c, mug_h, seq_w);
             fprintf(stderr, "chop: gc: deleted orphan blob %" PRIc3_h
                             "/%" PRIc3_w "\r\n", mug_h, seq_w);
           }
-          //  else: ref > 0, keep it
+          //  else: live blob, keep it
         }
         closedir(bkt_u);
       }
       closedir(top_u);
     }
   }
+
+  c3_free(liv_d);
 
   // success
   fprintf(stderr, "chop: event log truncation complete\r\n");
@@ -2076,7 +2097,7 @@ _disk_epoc_load(u3_disk* log_u, c3_d lat_d, u3_disk_load_e lod_e)
     } break;
 
     case U3E_VER3: {
-      //  VER3 is the current epoch format (image.bin + blobs.txt + ram events).
+      //  VER3 is the current epoch format (image.bin + ram events).
       //  Load path is identical to VER2; no migration needed.
       //  Fall through to VER2 handling.
       //

@@ -100,4 +100,27 @@
                    c3_h        mug_h,
                    c3_w        seq_w);
 
+    /* u3_blob_map(): mmap a blob file for direct byte access.
+    **
+    ** Returns a read-only pointer to the blob's bytes (length in *len_d),
+    ** or NULL on failure.  The mapping must be released via u3_blob_unmap().
+    ** No loom allocation is performed.
+    */
+      const c3_y*
+      u3_blob_map(const c3_c* pax_c, c3_h mug_h, c3_w seq_w, c3_d* len_d);
+
+    /* u3_blob_unmap(): release a mapping returned by u3_blob_map().
+    */
+      void
+      u3_blob_unmap(const c3_y* ptr_y, c3_d len_d);
+
+    /* u3_blob_met(): compute the bit-length of a blob without full materialization.
+    **
+    ** Equivalent to u3r_met(0, materialized_atom) but avoids loading the whole
+    ** blob into the loom.  Reads only the file size and last byte.
+    ** Returns 0 on error (blob missing or empty).
+    */
+      c3_d
+      u3_blob_met(const c3_c* pax_c, c3_h mug_h, c3_w seq_w);
+
 #endif /* ifndef U3_VERE_BLOB_H */

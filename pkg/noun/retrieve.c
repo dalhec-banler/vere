@@ -121,6 +121,10 @@ u3r_at(u3_atom a, u3_noun b)
       u3t_off(far_o);
       return u3_none;
     }
+    else if ( c3y == u3a_is_bob(a) ) {
+      u3t_off(far_o);
+      return u3_none;
+    }
     else {
       u3a_atom* a_u = u3a_to_ptr(a);
       c3_w len_w      = a_u->len_w;
@@ -793,6 +797,27 @@ u3r_nord(u3_noun a,
           return 2;
         }
         else {
+          //  materialize bob atoms before comparing word buffers
+          //
+          if ( c3y == u3a_is_bob(a) ) {
+            u3_atom mat = u3r_blob_load(a, u3C.dir_c);
+            if ( u3_none == mat ) {
+              return 0;
+            }
+            u3_atom ret = u3r_nord(mat, b);
+            u3z(mat);
+            return ret;
+          }
+          if ( c3y == u3a_is_bob(b) ) {
+            u3_atom mat = u3r_blob_load(b, u3C.dir_c);
+            if ( u3_none == mat ) {
+              return 2;
+            }
+            u3_atom ret = u3r_nord(a, mat);
+            u3z(mat);
+            return ret;
+          }
+
           u3a_atom* a_u = u3a_to_ptr(a);
           u3a_atom* b_u = u3a_to_ptr(b);
 
@@ -1023,16 +1048,20 @@ u3r_met(c3_y  a_y,
     daz_w = b;
   }
   else {
-    //  materialize bob atoms before measuring
+    //  bob atoms: use blob met (only reads last byte of file, no loom allocation)
+    //  then convert the bit-count to the requested bloq unit [a_y]
     //
     if ( c3y == u3a_is_bob(b) ) {
-      u3_atom mat = u3r_blob_load(b, u3C.dir_c);
-      if ( u3_none == mat ) {
+      c3_d bit_d = u3r_blob_met(b);
+      if ( 0 == bit_d ) {
+        //  failed to read or empty blob: bail
         return (c3_w)u3m_bail(c3__fail);
       }
-      c3_w ret_w = u3r_met(a_y, mat);
-      u3z(mat);
-      return ret_w;
+      //  convert bit count to a_y-bloq count (rounding up), same as the
+      //  formula below: (bit_d + ((1<<a_y)-1)) >> a_y
+      //
+      c3_d rnd_d = (c3_d)((1 << a_y) - 1);
+      return (c3_w)((bit_d + rnd_d) >> a_y);
     }
 
     u3a_atom* b_u = u3a_to_ptr(b);
@@ -1265,6 +1294,19 @@ u3r_mp(mpz_t   a_mp,
     _mpz_init_set_word(a_mp, b);
   }
   else {
+    //  bob atoms must be materialized before import
+    //
+    if ( c3y == u3a_is_bob(b) ) {
+      u3_atom mat = u3r_blob_load(b, u3C.dir_c);
+      if ( u3_none == mat ) {
+        mpz_init(a_mp);
+        return;
+      }
+      u3r_mp(a_mp, mat);
+      u3z(mat);
+      return;
+    }
+
     u3a_atom* b_u = u3a_to_ptr(b);
     c3_w    len_w = b_u->len_w;
     c3_d    bit_d = (c3_d)len_w << u3a_word_bits_log;
@@ -1294,6 +1336,18 @@ u3r_short(c3_w  a_w,
 
   if ( c3y == u3a_is_cat(b) ) wor_w = b;
   else {
+    //  materialize bob atoms before extracting short
+    //
+    if ( c3y == u3a_is_bob(b) ) {
+      u3_atom mat = u3r_blob_load(b, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return 0;
+      }
+      c3_s ret_s = u3r_short(a_w, mat);
+      u3z(mat);
+      return ret_s;
+    }
+
     u3a_atom* b_u = u3a_to_ptr(b);
     c3_w    nix_w = a_w >> u3a_word_words;
 
@@ -1394,6 +1448,18 @@ u3r_chub(c3_w  a_w,
     else return b;
   }
   else {
+    //  materialize bob atoms before extracting chub
+    //
+    if ( c3y == u3a_is_bob(b) ) {
+      u3_atom mat = u3r_blob_load(b, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return 0;
+      }
+      c3_d ret_d = u3r_chub(a_w, mat);
+      u3z(mat);
+      return ret_d;
+    }
+
     u3a_atom* b_u = u3a_to_ptr(b);
 
     if ( a_w >= b_u->len_w ) {
@@ -1849,6 +1915,18 @@ u3r_chop(c3_g  met_g,
     src_w = &src;
   }
   else {
+    //  bob atoms must be materialized before chopping
+    //
+    if ( c3y == u3a_is_bob(src) ) {
+      u3_atom mat = u3r_blob_load(src, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return;
+      }
+      u3r_chop(met_g, fum_w, wid_w, tou_w, dst_w, mat);
+      u3z(mat);
+      return;
+    }
+
     u3a_atom* src_u = u3a_to_ptr(src);
 
     u3_assert(u3_none != src);
@@ -2397,4 +2475,97 @@ u3r_blob_load(u3_atom a, const c3_c* pax_c)
   munmap(map_v, (size_t)len_d);
 
   return u3i_slab_mint_bytes(&sab_u);
+}
+
+/* u3r_blob_map(): mmap a bob atom's blob file for direct byte access.
+**
+**   Returns a read-only pointer to [*len_d] bytes, or NULL on failure.
+**   Release with u3r_blob_unmap(ptr, *len_d) when done.
+**   Uses u3C.dir_c as the pier path.
+**   No loom allocation is performed.
+*/
+const c3_y*
+u3r_blob_map(u3_atom a, c3_d* len_d)
+{
+  u3_assert( c3y == u3a_is_bob(a) );
+
+  c3_h mug_h = u3a_bob_mug(a);
+  c3_w seq_w = u3a_bob_seq(a);
+
+  c3_c fil_c[8192];
+  snprintf(fil_c, sizeof(fil_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_w,
+           u3C.dir_c, mug_h, seq_w);
+
+  struct stat st_u;
+  if ( -1 == stat(fil_c, &st_u) ) {
+    fprintf(stderr, "retrieve: blob_map: stat failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return 0;
+  }
+
+  *len_d = (c3_d)st_u.st_size;
+  if ( 0 == *len_d ) {
+    return 0;
+  }
+
+  c3_i fid_i = open(fil_c, O_RDONLY);
+  if ( -1 == fid_i ) {
+    fprintf(stderr, "retrieve: blob_map: open failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return 0;
+  }
+
+  void* map_v = mmap(0, (size_t)*len_d, PROT_READ, MAP_PRIVATE, fid_i, 0);
+  close(fid_i);
+
+  if ( MAP_FAILED == map_v ) {
+    fprintf(stderr, "retrieve: blob_map: mmap failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return 0;
+  }
+
+  return (const c3_y*)map_v;
+}
+
+/* u3r_blob_unmap(): release a mapping from u3r_blob_map().
+*/
+void
+u3r_blob_unmap(const c3_y* ptr_y, c3_d len_d)
+{
+  if ( ptr_y && len_d ) {
+    munmap((void*)ptr_y, (size_t)len_d);
+  }
+}
+
+/* u3r_blob_met(): compute bit-length of a bob atom without materialization.
+**
+**   Equivalent to u3r_met(0, materialized) but avoids loom allocation.
+**   Scans the last byte to strip trailing zeroes.
+**   Returns 0 on error.
+*/
+c3_d
+u3r_blob_met(u3_atom a)
+{
+  u3_assert( c3y == u3a_is_bob(a) );
+
+  c3_d   len_d;
+  const c3_y* byt_y = u3r_blob_map(a, &len_d);
+  if ( !byt_y ) {
+    return 0;
+  }
+
+  c3_d pos_d = len_d;
+  while ( pos_d > 0 && 0 == byt_y[pos_d - 1] ) {
+    pos_d--;
+  }
+
+  c3_d met_d = 0;
+  if ( pos_d > 0 ) {
+    c3_y top_y = byt_y[pos_d - 1];
+    c3_y clz_y = (c3_y)(__builtin_clz((unsigned int)top_y) - 24);
+    met_d = (pos_d - 1) * 8 + (c3_d)(8 - clz_y);
+  }
+
+  u3r_blob_unmap(byt_y, len_d);
+  return met_d;
 }

@@ -89,7 +89,43 @@ _cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
     _cs_jam_fib_chop(fib_u, 1, 1);
   }
   else {
-    c3_w   a_w = u3r_met(0, a);
+    //  for bob atoms, mmap the blob file directly to avoid loom allocation.
+    //  for normal atoms, use u3r_met as before.
+    //
+    c3_o         bob_o = u3a_is_bob(a);
+    c3_d         byt_d = 0;
+    const c3_y*  byt_y = 0;
+
+    c3_w   a_w;
+    if ( c3y == bob_o ) {
+      byt_y = u3r_blob_map(a, &byt_d);
+      if ( !byt_y ) {
+        u3m_bail(c3__fail);
+        return;
+      }
+      //  compute bit-length (met) from mmap'd bytes; strip trailing zero bytes
+      //  and find the MSB position of the last non-zero byte.
+      //
+      {
+        c3_d pos_d = byt_d;
+        while ( pos_d > 0 && 0 == byt_y[pos_d - 1] ) {
+          pos_d--;
+        }
+        if ( 0 == pos_d ) {
+          //  blob is all zeros → atom value is 0; treat as zero atom
+          u3r_blob_unmap(byt_y, byt_d);
+          _cs_jam_fib_chop(fib_u, 1, 1);
+          return;
+        }
+        c3_y top_y = byt_y[pos_d - 1];
+        c3_y clz_y = (c3_y)(__builtin_clz((unsigned int)top_y) - 24);
+        a_w = (c3_w)((pos_d - 1) * 8 + (c3_d)(8 - clz_y));
+      }
+    }
+    else {
+      a_w = u3r_met(0, a);
+    }
+
     c3_w   b_w = c3_bits_word(a_w);
     c3_w bit_w = fib_u->bit_w;
 
@@ -99,6 +135,7 @@ _cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
       c3_w met_w = a_w + (2 * b_w);
 
       if ( a_w > (c3_w_max - 64) ) {
+        if ( byt_y ) u3r_blob_unmap(byt_y, byt_d);
         u3m_bail(c3__fail);
         return;
       }
@@ -142,7 +179,16 @@ _cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
 
       //  _cs_jam_fib_chop(fib_u, a_w, a);
       //
-      u3r_chop(0, 0, a_w, bit_w, buf_w, a);
+      if ( byt_y ) {
+        //  write bob atom bytes directly from mmap, no loom allocation
+        //
+        c3_w len_w = (c3_w)((byt_d + sizeof(c3_w) - 1) / sizeof(c3_w));
+        u3r_chop_words(0, 0, a_w, bit_w, buf_w, len_w, (const c3_w*)byt_y);
+        u3r_blob_unmap(byt_y, byt_d);
+      }
+      else {
+        u3r_chop(0, 0, a_w, bit_w, buf_w, a);
+      }
     }
   }
 }
@@ -255,6 +301,16 @@ _cs_jam_bsw_atom(ur_bsw_t* rit_u, c3_w met_w, u3_atom a)
     //
     ur_bsw_atom64(rit_u, (c3_y)met_w, (c3_d)a);
   }
+  else if ( c3y == u3a_is_bob(a) ) {
+    //  bob atom: mmap the blob file and write bytes directly into the bitstream
+    //
+    c3_d        len_d;
+    const c3_y* byt_y = u3r_blob_map(a, &len_d);
+    if ( byt_y ) {
+      ur_bsw_atom_bytes(rit_u, (c3_d)met_w, (c3_y*)byt_y);
+      u3r_blob_unmap(byt_y, len_d);
+    }
+  }
   else {
     u3a_atom* vat_u = u3a_to_ptr(a);
     //  XX assumes little-endian
@@ -287,7 +343,12 @@ _cs_jam_xeno_atom(u3_atom a, void* ptr_v)
   _jam_xeno_t* jam_u = ptr_v;
   ur_bsw_t*    rit_u = &(jam_u->rit_u);
   u3_weak        bak = u3h_git(jam_u->har_p, a);
-  c3_w         met_w = u3r_met(0, a);
+  //  for bob atoms, use the blob met to avoid materializing the large atom;
+  //  met_w must fit in 32 bits here (jam uses c3_w for bit lengths)
+  //
+  c3_w         met_w = ( c3y == u3a_is_bob(a) )
+                     ? (c3_w)u3r_blob_met(a)
+                     : u3r_met(0, a);
 
   if ( u3_none == bak ) {
     u3h_put(jam_u->har_p, a, _cs_coin_chub(rit_u->bits));
@@ -902,11 +963,12 @@ u3s_cue_atom(u3_atom a)
      byt_y = (c3_y*)&a;
    }
    else {
-    u3a_atom* vat_u = u3a_to_ptr(a);
-    byt_y = (c3_y*)vat_u->buf_w;
-  }
+     u3_assert(c3n == u3a_is_bob(a));
+     u3a_atom* vat_u = u3a_to_ptr(a);
+     byt_y = (c3_y*)vat_u->buf_w;
+   }
 
-  return u3s_cue_bytes((c3_d)len_w, byt_y);
+   return u3s_cue_bytes((c3_d)len_w, byt_y);
 }
 
 /* _cs_etch_ud_size(): output length in @ud for given mpz_t.
@@ -1465,11 +1527,12 @@ u3s_sift_ud(u3_atom a)
      byt_y = (c3_y*)&a;
    }
    else {
-    u3a_atom* vat_u = u3a_to_ptr(a);
-    byt_y = (c3_y*)vat_u->buf_w;
-  }
+     u3_assert(c3n == u3a_is_bob(a));
+     u3a_atom* vat_u = u3a_to_ptr(a);
+     byt_y = (c3_y*)vat_u->buf_w;
+   }
 
-  return u3s_sift_ud_bytes(len_w, byt_y);
+   return u3s_sift_ud_bytes(len_w, byt_y);
 }
 
 /*
@@ -1574,9 +1637,11 @@ _cs_ram_xeno_atom(u3_atom a, void* ptr_v)
   ur_bsw_t*    rit_u = &(ram_u->rit_u);
   u3_weak        bak = u3h_git(ram_u->har_p, a);
   c3_o         bob_o = u3a_is_bob(a);
-  //  only compute met for non-bob atoms; bobs use mug+seq encoding
+  //  for bob atoms, use the blob's true bit-length for backref comparison.
+  //  for normal atoms, use u3r_met as before.
   //
-  c3_w         met_w = (c3n == bob_o) ? u3r_met(0, a) : 0;
+  c3_w         met_w = (c3n == bob_o) ? u3r_met(0, a)
+                                       : (c3_w)u3r_blob_met(a);
 
   if ( u3_none == bak ) {
     u3h_put(ram_u->har_p, a, _cs_coin_chub(rit_u->bits));

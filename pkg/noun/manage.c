@@ -6,6 +6,7 @@
 #ifndef U3_OS_windows
 #include <dlfcn.h>
 #endif
+#include <dirent.h>
 #include <errno.h>
 #include <signal.h>
 #if defined(U3_OS_osx)
@@ -686,6 +687,66 @@ _find_home(void)
   }
   if ( !u3H->ban_u.res_p ) {
     u3H->ban_u.res_p = u3h_new();
+  }
+
+  //  scan .urb/bob/ and register any blobs not already in ban_u.blb_p.
+  //
+  //    Blobs written by Earth (e.g. boot-time unix.c large-file ingestion)
+  //    before Mars existed are not tracked in the bank yet.  Walk the
+  //    two-level <mug>/<seq> tree and insert them with refcount 1 so that
+  //    epoch-chop GC does not delete them as orphans.
+  //
+  if ( u3C.dir_c ) {
+    c3_c bob_c[8192];
+    snprintf(bob_c, sizeof(bob_c), "%s/.urb/bob", u3C.dir_c);
+
+    DIR* top_u = opendir(bob_c);
+    if ( top_u ) {
+      struct dirent* mug_e;
+      while ( (mug_e = readdir(top_u)) ) {
+        if ( '.' == mug_e->d_name[0] || 0 == strcmp(mug_e->d_name, "stg") ) {
+          continue;
+        }
+
+        c3_h mug_h = (c3_h)strtoul(mug_e->d_name, 0, 10);
+        if ( 0 == mug_h ) {
+          continue;
+        }
+
+        c3_c mug_c[8192];
+        snprintf(mug_c, sizeof(mug_c), "%s/%s", bob_c, mug_e->d_name);
+
+        DIR* bkt_u = opendir(mug_c);
+        if ( !bkt_u ) {
+          continue;
+        }
+
+        struct dirent* seq_e;
+        while ( (seq_e = readdir(bkt_u)) ) {
+          if ( '.' == seq_e->d_name[0] || 0 == strcmp(seq_e->d_name, "lock") ) {
+            continue;
+          }
+
+          c3_w seq_w = (c3_w)strtoul(seq_e->d_name, 0, 10);
+          if ( 0 == seq_w ) {
+            continue;
+          }
+
+          c3_d  bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+          u3_noun key = u3i_chub(bid_d);
+          u3_weak old = u3h_get(u3H->ban_u.blb_p, key);
+
+          if ( u3_none == old ) {
+            //  blob exists on disk but is not tracked — register with rc=1
+            u3h_put(u3H->ban_u.blb_p, key, u3i_word(1));
+          }
+
+          u3z(key);
+        }
+        closedir(bkt_u);
+      }
+      closedir(top_u);
+    }
   }
 }
 

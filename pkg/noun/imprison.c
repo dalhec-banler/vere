@@ -572,6 +572,19 @@ u3i_vint(u3_noun a)
     return u3m_bail(c3__exit);
   }
   else {
+    //  bob atoms must be materialized before incrementing:
+    //  pug_u->len_w carries u3a_blob_flag and buf_w[0] is a seq number,
+    //  not atom data.
+    //
+    if ( c3y == u3a_is_bob(a) ) {
+      u3_atom mat = u3r_blob_load(a, u3C.dir_c);
+      if ( u3_none == mat ) {
+        return u3m_bail(c3__fail);
+      }
+      u3z(a);
+      return u3i_vint(mat);
+    }
+
     u3i_slab sab_u;
     u3i_slab_init(&sab_u, 0, u3r_met(0, a) + 1);
 

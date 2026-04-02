@@ -615,4 +615,28 @@
       u3_weak
       u3r_blob_load(u3_atom a, const c3_c* pax_c);
 
+      /* u3r_blob_map(): mmap a bob atom's blob file for direct byte access.
+      **
+      **   Returns a read-only pointer to [*len_d] bytes, or NULL on failure.
+      **   Release with u3r_blob_unmap(ptr, *len_d) when done.
+      **   Uses u3C.dir_c as the pier path.
+      **   No loom allocation is performed.
+      */
+      const c3_y*
+      u3r_blob_map(u3_atom a, c3_d* len_d);
+
+      /* u3r_blob_unmap(): release a mapping from u3r_blob_map().
+      */
+      void
+      u3r_blob_unmap(const c3_y* ptr_y, c3_d len_d);
+
+      /* u3r_blob_met(): compute bit-length of a bob atom without materialization.
+      **
+      **   Equivalent to u3r_met(0, materialized) but avoids loom allocation.
+      **   Scans the last byte to strip trailing zeroes.
+      **   Returns 0 on error.
+      */
+      c3_d
+      u3r_blob_met(u3_atom a);
+
 #endif /* ifndef U3_RETRIEVE_H */

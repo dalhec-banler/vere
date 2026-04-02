@@ -554,3 +554,105 @@ u3_blob_install_stg(const c3_c* pax_c,
   *seq_w = nex_w;
   return c3y;
 }
+
+/* u3_blob_map(): mmap blob file for direct byte access.
+*/
+const c3_y*
+u3_blob_map(const c3_c* pax_c, c3_h mug_h, c3_w seq_w, c3_d* len_d)
+{
+  c3_c fil_c[8192];
+  u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+
+  struct stat st_u;
+  if ( -1 == stat(fil_c, &st_u) ) {
+    fprintf(stderr, "blob: map: stat failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return 0;
+  }
+
+  *len_d = (c3_d)st_u.st_size;
+  if ( 0 == *len_d ) {
+    return 0;
+  }
+
+  c3_i fid_i = open(fil_c, O_RDONLY);
+  if ( -1 == fid_i ) {
+    fprintf(stderr, "blob: map: open failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return 0;
+  }
+
+  void* map_v = mmap(0, (size_t)*len_d, PROT_READ, MAP_PRIVATE, fid_i, 0);
+  close(fid_i);
+
+  if ( MAP_FAILED == map_v ) {
+    fprintf(stderr, "blob: map: mmap failed %s: %s\r\n",
+            fil_c, strerror(errno));
+    return 0;
+  }
+
+  return (const c3_y*)map_v;
+}
+
+/* u3_blob_unmap(): release mapping returned by u3_blob_map().
+*/
+void
+u3_blob_unmap(const c3_y* ptr_y, c3_d len_d)
+{
+  if ( ptr_y && len_d ) {
+    munmap((void*)ptr_y, (size_t)len_d);
+  }
+}
+
+/* u3_blob_met(): compute bit-length of blob content without full materialization.
+**
+**   Scans backward from end of file to find last non-zero byte, then
+**   returns (pos * 8 + 8 - clz(byte)).  This matches u3r_met(0, atom).
+**   Returns 0 if blob is missing, empty, or all-zero bytes.
+*/
+c3_d
+u3_blob_met(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
+{
+  c3_c fil_c[8192];
+  u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+
+  struct stat st_u;
+  if ( -1 == stat(fil_c, &st_u) || 0 == st_u.st_size ) {
+    return 0;
+  }
+
+  c3_d len_d = (c3_d)st_u.st_size;
+  c3_i fid_i = open(fil_c, O_RDONLY);
+  if ( -1 == fid_i ) {
+    return 0;
+  }
+
+  //  mmap and scan backward for last non-zero byte (strips trailing zeroes)
+  //
+  void* map_v = mmap(0, (size_t)len_d, PROT_READ, MAP_PRIVATE, fid_i, 0);
+  close(fid_i);
+  if ( MAP_FAILED == map_v ) {
+    return 0;
+  }
+
+  const c3_y* byt_y = (const c3_y*)map_v;
+  c3_d        pos_d = len_d;
+
+  while ( pos_d > 0 && 0 == byt_y[pos_d - 1] ) {
+    pos_d--;
+  }
+
+  c3_d met_d = 0;
+  if ( pos_d > 0 ) {
+    c3_y top_y = byt_y[pos_d - 1];
+    //  bit count = (pos_d - 1) * 8 + (8 - count_of_leading_zeros_in_top_y)
+    //  __builtin_clz operates on unsigned int (32 bits); subtract 24 to get
+    //  the leading-zero count within just the low byte.
+    //
+    c3_y clz_y = (c3_y)(__builtin_clz((unsigned int)top_y) - 24);
+    met_d = (pos_d - 1) * 8 + (c3_d)(8 - clz_y);
+  }
+
+  munmap(map_v, (size_t)len_d);
+  return met_d;
+}

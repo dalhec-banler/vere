@@ -106,6 +106,18 @@ struct _u3_ufil;
 #endif
   } u3_unix;
 
+/* u3_unix_bob_ctx: callback context for async large-file blob install.
+*/
+  typedef struct _u3_unix_bob_ctx {
+    u3_unix* unx_u;   //  driver (for u3_auto_plan and sev_h)
+    u3_ufil* fil_u;   //  file node (for gum_w update)
+    c3_h     old_w;   //  old gum_w (for change detection)
+    c3_c*    mnt_c;   //  mount point name (strdup'd, freed on callback)
+    u3_noun  pax;     //  file path noun (owned)
+    u3_noun  mim;     //  mime type noun (owned)
+    c3_ws    len_ws;  //  file byte length
+  } u3_unix_bob_ctx;
+
 void
 u3_unix_ef_look(u3_unix* unx_u, u3_noun mon, u3_noun all);
 
@@ -944,6 +956,57 @@ _unix_create_dir(u3_udir* dir_u, u3_udir* par_u, u3_noun nam)
 
 static u3_noun _unix_update_node(u3_unix* unx_u, u3_unod* nod_u);
 
+/* _unix_blob_install_cb(): callback fired when Mars installs a large file blob.
+**
+**  Injects a separate %into event for the single large file.
+**  Skips injection if the installed mug matches the prior gum_w (no change).
+*/
+static void
+_unix_blob_install_cb(void*  ptr_v,
+                      c3_h   mug_h,
+                      c3_w   seq_w,
+                      c3_o   ok_o)
+{
+  u3_unix_bob_ctx* ctx = ptr_v;
+
+  if ( c3y == ok_o ) {
+    //  skip if content unchanged since last %into
+    //
+    if ( mug_h == ctx->old_w ) {
+      u3z(ctx->pax);
+      u3z(ctx->mim);
+    }
+    else {
+      //  update the file node's checksum
+      //
+      if ( ctx->fil_u ) {
+        ctx->fil_u->gum_w = mug_h;
+      }
+
+      u3_atom  atm = u3i_blob(mug_h, seq_w);
+      u3_noun  dat = u3nt(ctx->mim, (u3_atom)ctx->len_ws, atm);
+      u3_noun  can = u3nc(u3nt(ctx->pax, u3_nul, dat), u3_nul);
+      u3_noun  wir = u3nt(c3__sync,
+                          u3dc("scot", c3__uv, ctx->unx_u->sev_h),
+                          u3_nul);
+      u3_noun  cad = u3nq(c3__into,
+                          u3i_string(ctx->mnt_c),
+                          c3n,
+                          can);
+
+      u3_auto_plan(&ctx->unx_u->car_u, u3_ovum_init(0, c3__c, wir, cad));
+    }
+  }
+  else {
+    u3l_log("unix: blob install failed for large file in %s", ctx->mnt_c);
+    u3z(ctx->pax);
+    u3z(ctx->mim);
+  }
+
+  c3_free(ctx->mnt_c);
+  c3_free(ctx);
+}
+
 /* _unix_update_file(): update file, producing list of changes
 **
 **  when scanning through files, if dry, do nothing. otherwise,
@@ -953,8 +1016,10 @@ static u3_noun _unix_update_node(u3_unix* unx_u, u3_unod* nod_u);
 **  gum_w, move on. otherwise, overwrite add path plus data to
 **  %into event.
 **
-**  Files larger than U3_BLOB_THRESH are stored in the blob store
-**  and referenced by a bob atom instead of copying bytes into loom.
+**  Files larger than U3_BLOB_THRESH are staged to .urb/bob/stg/ and
+**  installed into the blob store via the Mars IPC path (%blob-install).
+**  The %into event for the large file is injected asynchronously from
+**  the blob-install callback; this function returns u3_nul for large files.
 */
 static u3_noun
 _unix_update_file(u3_unix* unx_u, u3_ufil* fil_u)
@@ -984,39 +1049,109 @@ _unix_update_file(u3_unix* unx_u, u3_ufil* fil_u)
 
   len_ws = buf_u.st_size;
 
-  //  large files: stream into blob store, return bob atom
+  //  large files: stage in .urb/bob/stg/, install via %blob-install IPC
   //
   if ( (c3_d)len_ws > U3_BLOB_THRESH ) {
-    c3_h  bob_mug_h;
-    c3_w  bob_seq_w;
+    //  build staging path
+    //
+    c3_c stg_c[8192];
+    snprintf(stg_c, sizeof(stg_c), "%s/.urb/bob/stg/unix-XXXXXX",
+             unx_u->pax_c);
 
-    c3_o ok_o = u3_blob_save_fd(unx_u->pax_c, fid_i,
-                                (c3_d)len_ws, &bob_mug_h, &bob_seq_w);
-
-    if ( close(fid_i) < 0 ) {
-      u3l_log("error closing file %s: %s",
+    c3_i stg_i = mkstemp(stg_c);
+    if ( stg_i < 0 ) {
+      u3l_log("unix: mkstemp failed for %s: %s",
               fil_u->pax_c, strerror(errno));
+      close(fid_i);
+      return u3_nul;
+    }
+
+    //  stream file to staging area in 64K chunks
+    //
+    c3_y  buf_y[65536];
+    c3_o  ok_o = c3y;
+    ssize_t got_i;
+    while ( (got_i = read(fid_i, buf_y, sizeof(buf_y))) > 0 ) {
+      c3_y*   ptr_y = buf_y;
+      ssize_t rem_i = got_i;
+      while ( rem_i > 0 ) {
+        ssize_t wrt_i = write(stg_i, ptr_y, (size_t)rem_i);
+        if ( wrt_i <= 0 ) {
+          u3l_log("unix: write to staging file failed: %s", strerror(errno));
+          ok_o = c3n;
+          break;
+        }
+        ptr_y += wrt_i;
+        rem_i -= wrt_i;
+      }
+      if ( c3n == ok_o ) break;
+    }
+
+    close(fid_i);
+
+    if ( got_i < 0 ) {
+      u3l_log("unix: read from %s failed: %s",
+              fil_u->pax_c, strerror(errno));
+      ok_o = c3n;
     }
 
     if ( c3n == ok_o ) {
-      u3l_log("blob: failed to save large file %s", fil_u->pax_c);
+      close(stg_i);
+      c3_unlink(stg_c);
       return u3_nul;
     }
 
-    //  skip if content unchanged (bob_mug_h is content mug)
+    fsync(stg_i);
+    close(stg_i);
+
+    //  find the mount name for this file (walk parent dirs up to mon_u)
     //
-    if ( bob_mug_h == fil_u->gum_w ) {
+    c3_c* mnt_c = 0;
+    {
+      u3_umon* mon_u;
+      for ( mon_u = unx_u->mon_u; mon_u; mon_u = mon_u->nex_u ) {
+        if ( 0 == strncmp(fil_u->pax_c, mon_u->dir_u.pax_c,
+                          strlen(mon_u->dir_u.pax_c)) ) {
+          mnt_c = mon_u->nam_c;
+          break;
+        }
+      }
+    }
+    if ( !mnt_c ) {
+      u3l_log("unix: no mount found for large file %s", fil_u->pax_c);
+      c3_unlink(stg_c);
       return u3_nul;
     }
 
-    {
-      u3_noun pax = _unix_string_to_path(unx_u, fil_u->pax_c);
-      u3_noun mim = u3nt(c3__text, u3i_string("plain"), u3_nul);
-      u3_atom atm = u3i_blob(bob_mug_h, bob_seq_w);
-      u3_noun dat = u3nt(mim, (u3_atom)len_ws, atm);
+    //  allocate callback context
+    //
+    u3_unix_bob_ctx* ctx = c3_malloc(sizeof(*ctx));
+    ctx->unx_u  = unx_u;
+    ctx->fil_u  = fil_u;
+    ctx->old_w  = fil_u->gum_w;
+    ctx->mnt_c  = strdup(mnt_c);
+    ctx->pax    = _unix_string_to_path(unx_u, fil_u->pax_c);
+    ctx->mim    = u3nt(c3__text, u3i_string("plain"), u3_nul);
+    ctx->len_ws = len_ws;
 
-      return u3nc(u3nt(pax, u3_nul, dat), u3_nul);
+    //  send to Mars for installation; stg_c ownership passes to lord
+    //
+    u3_lord* god_u = unx_u->car_u.pir_u->god_u;
+    if ( !god_u ) {
+      u3l_log("unix: no lord for blob install of %s", fil_u->pax_c);
+      c3_unlink(stg_c);
+      u3z(ctx->pax);
+      u3z(ctx->mim);
+      c3_free(ctx->mnt_c);
+      c3_free(ctx);
+      return u3_nul;
     }
+
+    u3_lord_blob_install(god_u, strdup(stg_c), ctx, _unix_blob_install_cb);
+
+    //  return u3_nul here; the %into event is fired from the callback
+    //
+    return u3_nul;
   }
 
   //  small files: existing path — read into buffer
