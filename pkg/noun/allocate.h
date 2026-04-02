@@ -972,18 +972,7 @@ u3a_dash(void);
                         void     (*pat_f)(u3_atom, void*),
                         c3_o     (*cel_f)(u3_noun, void*));
 
-        /* u3a_find_bobs(): scan the home road heap for bob atoms.
-        **
-        **   O(heap_pages) scan via the page directory — much faster than
-        **   u3a_walk_fore for the purpose of rebuilding the blob GC live-set.
-        **   Must be called with u3R == home road.
-        **
-        **   Returns a malloc'd, sorted array of blob IDs (each a c3_d packing
-        **   mug_h in the high 32 bits and seq_w in the low 32 bits).
-        **   Sets [*out_z] to the count.  Caller must c3_free() the array.
-        */
-          c3_d*
-          u3a_find_bobs(c3_z* out_z);
+
 
         /* u3a_string(): `a` as an on-loom c-string.
         */

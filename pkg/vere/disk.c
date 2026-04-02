@@ -1231,6 +1231,44 @@ _disk_epoc_kill(u3_disk* log_u, c3_d epo_d)
   c3_c epo_c[8193];
   snprintf(epo_c, sizeof(epo_c), "%s/0i%" PRIc3_d, log_u->com_u->pax_c, epo_d);
 
+  //  process blobs.txt: decrement event-log refcounts; delete files at zero
+  //
+  {
+    c3_c blt_c[8193];
+    snprintf(blt_c, sizeof(blt_c), "%s/blobs.txt", epo_c);
+    FILE* blt_f = fopen(blt_c, "r");
+    if ( blt_f ) {
+      while ( 1 ) {
+        uint32_t mug_i = 0, seq_i = 0;
+        if ( 2 != fscanf(blt_f, "%" SCNu32 " %" SCNu32, &mug_i, &seq_i) ) {
+          break;
+        }
+        c3_h mug_h = (c3_h)mug_i;
+        c3_w seq_w = (c3_w)seq_i;
+        c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+        u3_noun bk  = u3i_chub(bid_d);
+        u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bk);
+        c3_w    ref_w = 0;
+        if ( u3_none != bv ) {
+          u3r_safe_word(bv, &ref_w);
+        }
+        if ( ref_w > 1 ) {
+          u3h_put(u3H->ban_u.blb_p, bk, u3i_word(ref_w - 1));
+        }
+        else {
+          //  last ref — delete blob file
+          u3_blob_delete(log_u->dir_u->pax_c, mug_h, seq_w);
+          u3h_del(u3H->ban_u.blb_p, bk);
+          fprintf(stderr, "disk: gc: deleted blob %" PRIc3_h
+                          "/%" PRIc3_w " (epoch 0i%" PRIc3_d ")\r\n",
+                  mug_h, seq_w, epo_d);
+        }
+        u3z(bk);
+      }
+      fclose(blt_f);
+    }
+  }
+
   //  delete files in epoch directory
   u3_dire* dir_u = u3_foil_folder(epo_c);
   u3_dent* den_u = dir_u->all_u;
@@ -1506,52 +1544,6 @@ _disk_vere_diff(u3_disk* log_u)
   return c3n;
 }
 
-/* _disk_bid_cmp(): bsearch/qsort comparator for c3_d blob IDs.
-*/
-static int
-_disk_bid_cmp(const void* a_v, const void* b_v)
-{
-  c3_d a_d = *(const c3_d*)a_v;
-  c3_d b_d = *(const c3_d*)b_v;
-  return (a_d > b_d) - (a_d < b_d);
-}
-
-/* _disk_blb_rebuild(): build a C-heap sorted array of live blob IDs.
-**
-**   Scans the home road heap page directory for bob atoms — O(heap_pages),
-**   much faster than u3a_walk_fore on the full noun tree, and does NOT
-**   allocate in the loom (safe when the loom may be undersized at chop time).
-**
-**   Filters the raw heap scan results by verifying each candidate blob file
-**   actually exists on disk, eliminating false positives from allocated chunks
-**   (cells, HAMT nodes, etc.) that happen to match the bob atom pattern.
-**
-**   Returns a malloc'd sorted array of c3_d blob IDs (mug<<32|seq).
-**   Sets [*out_z] to the count.  Caller must c3_free() the result.
-*/
-static c3_d*
-_disk_blb_rebuild(u3_disk* log_u, c3_z* out_z)
-{
-  c3_z  raw_z = 0;
-  c3_d* raw_d = u3a_find_bobs(&raw_z);
-
-  //  filter: keep only candidates whose blob file actually exists
-  //
-  c3_z  liv_z = 0;
-  for ( c3_z i_z = 0; i_z < raw_z; i_z++ ) {
-    c3_h mug_h = (c3_h)(raw_d[i_z] >> 32);
-    c3_w seq_w = (c3_w)(raw_d[i_z] & 0xFFFFFFFF);
-    if ( c3y == u3_blob_exists(log_u->dir_u->pax_c, mug_h, seq_w) ) {
-      raw_d[liv_z++] = raw_d[i_z];
-    }
-  }
-  *out_z = liv_z;
-
-  fprintf(stderr, "chop: gc: found %" PRIc3_z " live blob(s) in heap "
-                  "(%" PRIc3_z " candidates)\r\n", liv_z, raw_z);
-  return raw_d;
-}
-
 /* u3_disk_chop(): delete all but the latest 2 epocs.
 */
 void
@@ -1568,86 +1560,22 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
     exit(0);  //  enjoy
   }
 
-  //  delete all but the last two epochs
+  //  delete all but the last two epochs.
+  //  _disk_epoc_kill reads each epoch's blobs.txt and decrements
+  //  blb_p refcounts, deleting blob files when they reach zero.
   //
   //    XX parameterize the number of epochs to chop
   //
   for ( c3_z i_z = 2; i_z < len_z; i_z++ ) {
-    fprintf(stderr, "chop: deleting epoch 0i%" PRIu64 "\r\n",
-                    sot_d[i_z]);
+    fprintf(stderr, "chop: deleting epoch 0i%" PRIu64 "\r\n", sot_d[i_z]);
     if ( c3y != _disk_epoc_kill(log_u, sot_d[i_z]) ) {
       fprintf(stderr, "chop: failed to delete epoch 0i%" PRIu64 "\r\n", sot_d[i_z]);
       exit(1);
     }
   }
 
-  // cleanup
   c3_free(sot_d);
 
-  //  build live blob set from heap scan (no loom allocation)
-  //
-  c3_z  liv_z = 0;
-  c3_d* liv_d = _disk_blb_rebuild(log_u, &liv_z);
-
-  //  GC: sweep blob store for orphaned blobs (not in live set)
-  //
-  //    Any blob not referenced by a live bob atom is an orphan.
-  //    Safe to delete.
-  //
-  {
-    c3_c bob_c[8192];
-    snprintf(bob_c, sizeof(bob_c), "%s/.urb/bob", log_u->dir_u->pax_c);
-
-    DIR* top_u = opendir(bob_c);
-    if ( top_u ) {
-      struct dirent* mug_e;
-      while ( (mug_e = readdir(top_u)) ) {
-        if ( '.' == mug_e->d_name[0] || 0 == strcmp(mug_e->d_name, "stg") ) {
-          continue;
-        }
-        c3_h mug_h = (c3_h)strtoul(mug_e->d_name, 0, 10);
-        if ( 0 == mug_h ) {
-          continue;
-        }
-
-        c3_c mug_c[8192];
-        snprintf(mug_c, sizeof(mug_c), "%s/%s", bob_c, mug_e->d_name);
-
-        DIR* bkt_u = opendir(mug_c);
-        if ( !bkt_u ) {
-          continue;
-        }
-        struct dirent* seq_e;
-        while ( (seq_e = readdir(bkt_u)) ) {
-          if ( '.' == seq_e->d_name[0] || 0 == strcmp(seq_e->d_name, "lock") ) {
-            continue;
-          }
-          c3_w seq_w = (c3_w)strtoul(seq_e->d_name, 0, 10);
-          if ( 0 == seq_w ) {
-            continue;
-          }
-
-          c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-          c3_d* hit_d = bsearch(&bid_d, liv_d, liv_z, sizeof(c3_d),
-                                _disk_bid_cmp);
-
-          if ( !hit_d ) {
-            //  orphan — delete
-            u3_blob_delete(log_u->dir_u->pax_c, mug_h, seq_w);
-            fprintf(stderr, "chop: gc: deleted orphan blob %" PRIc3_h
-                            "/%" PRIc3_w "\r\n", mug_h, seq_w);
-          }
-          //  else: live blob, keep it
-        }
-        closedir(bkt_u);
-      }
-      closedir(top_u);
-    }
-  }
-
-  c3_free(liv_d);
-
-  // success
   fprintf(stderr, "chop: event log truncation complete\r\n");
 }
 
@@ -1997,6 +1925,61 @@ typedef enum {
   _epoc_late = 4   // format from the future
 } _epoc_kind;
 
+/* _disk_blb_rebuild_from_epochs(): rebuild ban_u.blb_p from all epoch blobs.txt files.
+**
+**   Called after u3m_boot() so the loom (u3H) is live.
+**   Walks all epoch directories under .urb/log/, reads each blobs.txt,
+**   and increments the blb_p refcount for each referenced blob.
+**   Replaces any stale blb_p from the snapshot with a freshly-computed map.
+**
+**   Note: we do NOT u3h_free the old blb_p here.  The snapshot may have
+**   been saved with a larger loom, in which case the stale HAMT nodes may
+**   live on pages beyond the current loom's HEAP.len_w, and u3h_free would
+**   crash with "palloc: page out of heap".  The old nodes become dead loom
+**   memory and will be reclaimed at the next epoch roll / snapshot compaction.
+*/
+static void
+_disk_blb_rebuild_from_epochs(u3_disk* log_u)
+{
+  //  discard stale snapshot blb_p; allocate a fresh, empty HAMT
+  //
+  u3H->ban_u.blb_p = u3h_new();
+
+  c3_z  epo_z = u3_disk_epoc_list(log_u, 0);
+  c3_d* epo_d = c3_malloc(epo_z * sizeof(c3_d));
+  u3_disk_epoc_list(log_u, epo_d);
+
+  for ( c3_z i_z = 0; i_z < epo_z; i_z++ ) {
+    c3_c blt_c[8193];
+    snprintf(blt_c, sizeof(blt_c), "%s/0i%" PRIc3_d "/blobs.txt",
+             log_u->com_u->pax_c, epo_d[i_z]);
+
+    FILE* blt_f = fopen(blt_c, "r");
+    if ( !blt_f ) {
+      continue;  //  no blobs.txt in this epoch (pre-VER3 or no blobs)
+    }
+
+    while ( 1 ) {
+      uint32_t mug_i = 0, seq_i = 0;
+      if ( 2 != fscanf(blt_f, "%" SCNu32 " %" SCNu32, &mug_i, &seq_i) ) {
+        break;
+      }
+      c3_d  bid_d = ((c3_d)(c3_h)mug_i << 32) | (c3_d)(c3_w)seq_i;
+      u3_noun bk  = u3i_chub(bid_d);
+      u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bk);
+      c3_w    ref_w = 0;
+      if ( u3_none != bv ) {
+        u3r_safe_word(bv, &ref_w);
+      }
+      u3h_put(u3H->ban_u.blb_p, bk, u3i_word(ref_w + 1));
+      u3z(bk);
+    }
+    fclose(blt_f);
+  }
+
+  c3_free(epo_d);
+}
+
 /* _disk_epoc_load(): load existing epoch, enumerating failures
 */
 static _epoc_kind
@@ -2168,6 +2151,10 @@ _disk_epoc_load(u3_disk* log_u, c3_d lat_d, u3_disk_load_e lod_e)
 #endif
 
       u3m_boot(log_u->dir_u->pax_c, (size_t)1 << u3_Host.ops_u.lom_y); // XX confirm
+
+      //  rebuild blob refcount map from surviving epoch blobs.txt files
+      //
+      _disk_blb_rebuild_from_epochs(log_u);
 
       if ( log_u->dun_d < u3A->eve_d ) {
         //  XX bad, add to enum
