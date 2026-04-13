@@ -180,9 +180,12 @@ _newt_read_cb(uv_stream_t*    str_u,
 
     if ( UV_EOF != len_i ) {
       fprintf(stderr, "newt: read failed %s\r\n", uv_strerror(len_i));
+      mot_u->bal_f(mot_u->ptr_v, len_i, uv_strerror(len_i));
+    }
+    else if ( !mot_u->fag_w ) {
+      mot_u->bal_f(mot_u->ptr_v, len_i, uv_strerror(len_i));
     }
 
-    mot_u->bal_f(mot_u->ptr_v, len_i, uv_strerror(len_i));
   }
   //  EAGAIN/EWOULDBLOCK
   //
@@ -303,8 +306,7 @@ u3_newt_moat_info(u3_moat* mot_u)
   }
   return u3_pier_mass(
     c3__moat,
-    u3i_list(u3_pier_mase("pending-inbound", u3i_half(len_w)),
-             u3_none));
+    u3i_list(u3_pier_mase("pending-inbound", u3i_half(len_w))));
 }
 
 /* u3_newt_moat_slog(); print status info.

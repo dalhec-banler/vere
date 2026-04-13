@@ -419,7 +419,7 @@ _cu_realloc(FILE* fil_u, ur_root_t** tor_u, ur_nvec_t* doc_u)
   //
   c3_h wag_h = u3C.wag_h;
   u3C.wag_h |= u3o_debug_ram;
-  u3m_grab(u3_none);
+  u3m_grab();
   u3C.wag_h  = wag_h;
 
   //  re-establish warm jet state
@@ -559,6 +559,9 @@ u3u_melt(void)
 
   u3h_free(u3R->cax.per_p);
   u3R->cax.per_p = u3h_new_cache(u3C.per_w);
+
+  u3h_free(u3R->cax.for_p);
+  u3R->cax.for_p = u3h_new_cache(u3C.per_w);
 
   u3h_free(u3R->jed.cod_p);
   u3R->jed.cod_p = u3h_new();

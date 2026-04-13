@@ -290,14 +290,7 @@ _cm_stack_unwind(void)
   u3_noun tax;
 
   while ( u3R != &(u3H->rod_u) ) {
-    u3_noun yat = u3R->bug.tax;
-    u3m_fall();
-    yat = u3a_take(yat);
-    //  pop the stack
-    //
-    u3a_drop_heap(u3R->cap_p, u3R->ear_p);
-    u3R->cap_p = u3R->ear_p;
-    u3R->ear_p = 0;
+    u3_noun yat = u3m_love(u3R->bug.tax);
 
     u3R->bug.tax = u3kb_weld(yat, u3R->bug.tax);
   }
@@ -320,8 +313,8 @@ _cm_signal_recover(c3_m sig_m, u3_noun arg)
   u3H->rod_u.bug.tax = 0;
 
   if ( NULL != u3t_Spin ) {
-    u3t_Spin->off_h = u3H->rod_u.off_w;
-    u3t_Spin->fow_h = u3H->rod_u.fow_w;
+    u3t_Spin->off_w = u3H->rod_u.off_w;
+    u3t_Spin->fow_w = u3H->rod_u.fow_w;
   }
 
   if ( &(u3H->rod_u) == u3R ) {
@@ -521,6 +514,7 @@ _pave_parts(void)
   }
   u3R->cax.har_p = u3h_new_cache(u3C.hap_w);  //  transient
   u3R->cax.per_p = u3h_new_cache(u3C.per_w);  //  persistent
+  u3R->cax.for_p = u3h_new_cache(u3C.per_w);  //  ford
   u3R->jed.war_p = u3h_new();
   u3R->jed.cod_p = u3h_new();
   u3R->jed.han_p = u3h_new();
@@ -548,6 +542,7 @@ _pave_params(void)
   //
   //
   return 0
+         ^ u3a_wits
          ^ (u3a_vits << 1)
          ^ ((u3a_page + 2 - 12) << 3)
          ^ (U3N_VERLAT << 6);
@@ -597,8 +592,10 @@ _find_home(void)
 
   c3_d pam_d = *((c3_d*)u3_Loom + 1);
 
-  if ( pam_d & 1 ) {
-    fprintf(stderr, "word-size mismatch: 64-bit snapshot in 32-bit binary\r\n");
+  if ( (pam_d & 1) != u3a_wits ) {
+    fprintf(stderr, "word-size mismatch: %s snapshot in %s binary\r\n",
+                    (pam_d & 1) ? "64-bit" : "32-bit",
+                    u3a_wits    ? "64-bit" : "32-bit");
     abort();
   }
   if ( ((pam_d >> 1) & 3) != u3a_vits ) {
@@ -672,13 +669,8 @@ _find_home(void)
     u3H->pam_d = _pave_params();
   }
 
-  //  if lop_p is zero than it is an old pier pre %loop hint, initialize the
-  //  HAMT
+  //  properly initialize things from zero-initialize future proof buffer
   //
-  if (!u3R->lop_p) {
-    u3R->lop_p = u3h_new();
-  }
-
   //  lazy-init blob bank HAMTs (zero if snapshot predates blob store)
   //
   if ( !u3H->ban_u.blb_p ) {
@@ -687,6 +679,8 @@ _find_home(void)
   if ( !u3H->ban_u.res_p ) {
     u3H->ban_u.res_p = u3h_new();
   }
+  if ( !u3R->lop_p )     u3R->lop_p = u3h_new();
+  if ( !u3R->cax.for_p ) u3R->cax.for_p = u3h_new_cache(u3C.per_w);
 }
 
 /* u3m_pave(): instantiate or activate image.
@@ -1020,6 +1014,12 @@ u3m_bail(u3_noun how)
     }
   }
 
+  // Reset the spin stack pointer
+  if ( NULL != u3t_Spin ) {
+    u3t_Spin->off_w = u3R->off_w;
+    u3t_Spin->fow_w = u3R->fow_w;
+  }
+
 #ifndef VERE64
   _longjmp(u3R->esc.buf, how);
 #else
@@ -1157,8 +1157,8 @@ u3m_leap(c3_w pad_w)
 
   // Stash slow stack pointer
   if ( NULL != u3t_Spin ) {
-    u3R->off_w = u3t_Spin->off_h;
-    u3R->fow_w = u3t_Spin->fow_h;
+    u3R->off_w = u3t_Spin->off_w;
+    u3R->fow_w = u3t_Spin->fow_w;
   } 
 
   /* Set up the new road.
@@ -1237,7 +1237,13 @@ u3m_hate(c3_w pad_w)
   u3_assert(0 == u3R->ear_p);
 
   u3R->ear_p = u3R->cap_p;
+
+  c3_w fag_w = u3R->how.fag_w;
   u3m_leap(pad_w);
+
+  //  inherit forward-flowing flags
+  //
+  u3R->how.fag_w |= (fag_w & u3a_flag_cash);
 
   u3R->bug.mer = u3i_string(
     "emergency buffer with sufficient space to cons the trace and bail"
@@ -1363,6 +1369,7 @@ u3m_love(u3_noun pro)
   u3p(u3h_root) byc_p = u3R->byc.har_p;
   u3a_jets      jed_u = u3R->jed;
   u3p(u3h_root) per_p = u3R->cax.per_p;
+  u3p(u3h_root) for_p = u3R->cax.for_p;
 
   //  are there any timers on the road?
   //
@@ -1376,8 +1383,8 @@ u3m_love(u3_noun pro)
 
   // restore slow stack pointer
   if ( NULL != u3t_Spin ) {
-    u3t_Spin->off_h = u3R->off_w;
-    u3t_Spin->fow_h = u3R->fow_w;
+    u3t_Spin->off_w = u3R->off_w;
+    u3t_Spin->fow_w = u3R->fow_w;
   }
 
   //  copy product and caches off our stack
@@ -1386,6 +1393,7 @@ u3m_love(u3_noun pro)
   jed_u = u3j_take(jed_u);
   byc_p = u3n_take(byc_p);
   per_p = u3h_take(per_p);
+  for_p = u3h_take(for_p);
 
   //  pop the stack
   //
@@ -1398,45 +1406,9 @@ u3m_love(u3_noun pro)
   u3j_reap(jed_u);
   u3n_reap(byc_p);
   u3z_reap(u3z_memo_keep, per_p);
+  u3z_reap(u3z_memo_ford, for_p);
 
   return pro;
-}
-
-/* u3m_warm(): return product from leap without promoting state
-*/
-u3_noun
-u3m_warm(u3_noun pro)
-{
-  c3_o tim_o = u3du(u3R->tim);
-  u3m_fall();
-  if ( _(tim_o) ) _m_renew_now();
-  pro = u3a_take(pro);
-
-  //  pop the stack
-  //
-  u3a_drop_heap(u3R->cap_p, u3R->ear_p);
-  u3R->cap_p = u3R->ear_p;
-  u3R->ear_p = 0;
-  return pro;
-}
-
-/* u3m_pour(): return error ball from leap, promoting the state if the error
- * is deterministic
-*/
-u3_noun
-u3m_pour(u3_noun why)
-{
-  u3_assert(c3y == u3du(why));
-  switch (u3h(why)) {
-    case 0:
-    case 1: {
-      return u3m_love(why);
-    } break;
-
-    default: {
-      return u3m_warm(why);
-    } break;
-  }
 }
 
 /* u3m_golf(): record cap_p length for u3m_flog().
@@ -1562,7 +1534,7 @@ u3m_soft_top(c3_w    mil_w,                     //  timer ms
         u3a_print_memory(stderr, "execute: top", u3R->all.max_w);
       }
 #endif
-      u3m_grab(pro, u3_none);
+      u3m_grab(pro);
     }
 
     /* Revert to external signal regime.
@@ -1579,7 +1551,7 @@ u3m_soft_top(c3_w    mil_w,                     //  timer ms
 #endif
     /* Overload the error result.
     */
-    pro = u3m_pour(why);
+    pro = u3m_love(why);
   }
 
   /* Revert to external signal regime.
@@ -1681,7 +1653,7 @@ u3m_soft_cax(u3_funq fun_f,
     */
 #ifdef U3_MEMORY_DEBUG
     if ( u3C.wag_h & u3o_debug_ram ) {
-      u3m_grab(pro, u3_none);
+      u3m_grab(pro);
     }
 #endif
 
@@ -1710,7 +1682,7 @@ u3m_soft_cax(u3_funq fun_f,
         } break;
 
         case 3: {                             //  failure; rebail w/trace
-          u3_noun yod = u3m_warm(u3t(why));
+          u3_noun yod = u3m_love(u3t(why));
 
           u3m_bail
             (u3nt(3,
@@ -1755,7 +1727,7 @@ u3m_soft_run(u3_noun gul,
   */
 
   {
-    if ( (u3_nul == gul) || cash_t ) {
+    if ( (u3_nul == gul) || (u3R->how.fag_w & u3a_flag_cash) ) {
       u3R->ski.gul = u3_nul;
     }
     else {
@@ -1789,7 +1761,7 @@ u3m_soft_run(u3_noun gul,
     */
 #ifdef U3_MEMORY_DEBUG
     if ( u3C.wag_h & u3o_debug_ram ) {
-      u3m_grab(pro, u3_none);
+      u3m_grab(pro);
     }
 #endif
 
@@ -1823,7 +1795,7 @@ u3m_soft_run(u3_noun gul,
         } break;
 
         case 3: {                             //  failure; rebail w/trace
-          u3_noun yod = u3m_warm(u3t(why));
+          u3_noun yod = u3m_love(u3t(why));
 
           u3m_bail
             (u3nt(3,
@@ -1832,7 +1804,7 @@ u3m_soft_run(u3_noun gul,
         } break;
 
         case 4: {                             //  meta-bail
-          u3m_bail(u3m_pour(u3t(why)));
+          u3m_bail(u3m_love(u3t(why)));
         } break;
       }
     }
@@ -1902,7 +1874,7 @@ u3m_soft_esc(u3_noun ref, u3_noun sam)
     /* Push the error back up to the calling context - not the run we
     ** are in, but the caller of the run, matching pure nock semantics.
     */
-    u3m_bail(u3nc(4, u3m_pour(why)));
+    u3m_bail(u3nc(4, u3m_love(why)));
   }
 
   /* Release the sample.  Note that we used it above, but in a junior
@@ -1926,30 +1898,19 @@ u3m_mark_mute(void)
   c3_free(arr_u);
 }
 
-/* u3m_grab(): garbage-collect the world, plus extra roots.
+/* u3m_vgrab(): garbage-collect the world, plus extra roots.
 */
 void
-u3m_grab(u3_noun som, ...)   // terminate with u3_none
+u3m_vgrab(u3_noun* som, c3_z len_z)
 {
   // u3h_free(u3R->cax.har_p);
   // u3R->cax.har_p = u3h_new();
 
   u3a_mark_init();
-  {
-    va_list vap;
-    u3_noun tur;
-
-    va_start(vap, som);
-
-    if ( som != u3_none ) {
-      u3a_mark_noun(som);
-
-      while ( u3_none != (tur = va_arg(vap, u3_noun)) ) {
-        u3a_mark_noun(tur);
-      }
-    }
-    va_end(vap);
+  for (c3_z i_z = 0; i_z < len_z; i_z++) {
+    u3a_mark_noun(som[i_z]);
   }
+
   u3m_mark_mute();
   u3a_sweep();
 }
@@ -2733,7 +2694,7 @@ u3m_boot(c3_c* dir_c, size_t len_i)
   */
   if ( (c3n == nuu_o) && (u3C.wag_h & u3o_check_corrupt) ) {
     u3l_log("boot: gc requested");
-    u3m_grab(u3_none);
+    u3m_grab();
     u3C.wag_h &= ~u3o_check_corrupt;
     u3l_log("boot: gc complete");
   }

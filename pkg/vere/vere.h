@@ -95,6 +95,7 @@
       typedef struct _u3_moat {
         uv_pipe_t        pyp_u;             //  input stream
         u3_moor_bail     bal_f;             //  error response function
+        c3_w             fag_w;
         void*            ptr_v;             //  callback pointer
         u3_moor_poke     pok_f;             //  action function
         u3_mess          mes_u;             //  message in progress
@@ -108,6 +109,7 @@
       typedef struct _u3_mojo {
         uv_pipe_t        pyp_u;             //  output stream
         u3_moor_bail     bal_f;             //  error response function
+        c3_w             fag_w;
         void*            ptr_v;             //  callback pointer
       } u3_mojo;
 
@@ -115,6 +117,7 @@
       typedef struct _u3_moor {
         uv_pipe_t        pyp_u;             //  duplex stream
         u3_moor_bail     bal_f;             //  error response function
+        c3_w             fag_w;
         void*            ptr_v;             //  callback pointer
         u3_moor_poke     pok_f;             //  action function
         u3_mess          mes_u;             //  message in progress
@@ -337,6 +340,7 @@
         u3_utty*   uty_u;                   //  linked terminal list
         c3_o       nex_o;                   //  upgrade requested
         c3_c*      arc_c;                   //  upgrade to arch
+        c3_c*      bit_c;                   //  upgrade bit width ("32" or "64")
         u3_opts    ops_u;                   //  commandline options
         c3_o       pep_o;                   //  prep for upgrade
         c3_i       xit_i;                   //  exit code for shutdown
@@ -1447,6 +1451,7 @@
         c3_i
         u3_king_vere(c3_c* pac_c,  // pace
                      c3_c* ver_c,  // version
+                     c3_c* bit_c,  // bit width ("32" or "64")
                      c3_c* arc_c,  // architecture
                      c3_c* dir_c,  // output directory
                      c3_t  lin_t); // link to $pier/.run

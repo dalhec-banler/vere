@@ -516,9 +516,8 @@ _conn_read_peel(u3_conn* con_u, u3_noun dat)
                    u3nc(c3__mass, u3_nul),
                    u3nc(c3__quic, u3_nul),
                    u3nc(c3__port,
-                        u3i_list(c3__ames, c3__htls, c3__http, u3_none)),
-                   u3nc(c3__v, u3_nul), u3nc(c3__who, u3_nul),
-                   u3_none));
+                        u3i_list(c3__ames, c3__htls, c3__http)),
+                   u3nc(c3__v, u3_nul), u3nc(c3__who, u3_nul)));
       } break;
       //  simple health check.
       //
@@ -866,6 +865,10 @@ _conn_ef_handle(u3_conn*  con_u,
     else {
       can_u->mor_u.bal_f(can_u, -4, "handle-unknown");
       u3_king_bail();
+    }
+
+    if ( !uv_is_readable((uv_stream_t*)&con_u->san_u->pyp_u) ) {
+      _conn_close_chan(con_u->san_u, can_u);
     }
   }
   else {
