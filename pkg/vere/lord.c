@@ -630,7 +630,7 @@ _lord_on_plea(void* ptr_v, c3_d len_d, c3_y* byt_y)
 
     case c3__quiz: {
       _lord_plea_quiz(god_u, u3k(dat));
-    }
+    } break;
 
     case c3__blob: {
       _lord_plea_blob(god_u, u3k(dat));
@@ -695,7 +695,7 @@ _lord_writ_make(u3_lord* god_u, u3_writ* wit_u)
 
     case u3_writ_quiz: {
       msg = u3nt(c3__quiz, wit_u->qiz_u.qiz_m, u3_nul);
-    }
+    } break;
 
     case u3_writ_exit: {
       msg = u3nc(c3__exit, u3_nul);

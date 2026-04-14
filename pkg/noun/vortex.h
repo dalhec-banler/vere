@@ -24,12 +24,17 @@
     **   Holds one u3a_blob.use_w ref until the owning event is committed
     **   to the event log (at which point the ref becomes an event-log ref),
     **   or until the lease expires (TTL).
+    **
+    **   dead_o: c3y after the lease has been committed (or otherwise invalidated).
+    **   Set by _mars_fact via the reverse index; the lease pointer may remain in
+    **   the expiry priority queue until it bubbles to the top and is freed.
     */
       typedef struct _u3v_lease {
         c3_d  res_d;        //  reservation id (monotonic counter)
         c3_d  exp_d;        //  expiry time (Unix ms); 0 = no expiry
         c3_h  mug_h;        //  blob mug
         c3_w  seq_w;        //  blob seq within mug bucket
+        c3_o  dead_o;       //  c3y if lease has been committed/invalidated
         c3_c  stg_c[4096];  //  staging path that was installed (for logging)
       } u3v_lease;
 
@@ -38,11 +43,13 @@
     **   Lives in u3v_home, checkpointed in image.bin.
     **   blb_p: HAMT mapping blob_id (u64 = mug<<32|seq) -> u3a_blob loom offset
     **   res_p: HAMT mapping res_id  (u64)               -> u3v_lease loom offset
+    **   rev_p: HAMT mapping blob_id (u64 = mug<<32|seq) -> res_d
     **   nxt_d: monotonic reservation counter
     */
       typedef struct _u3v_bank {
         u3p(u3h_root) blb_p;  //  blob_id -> u3a_blob*
         u3p(u3h_root) res_p;  //  res_id  -> u3v_lease*
+        u3p(u3h_root) rev_p;  //  blob_id -> res_d
         c3_d          nxt_d;  //  next reservation id
       } u3v_bank;
 

@@ -528,6 +528,7 @@ _pave_parts(void)
   //
   u3H->ban_u.blb_p = u3h_new();
   u3H->ban_u.res_p = u3h_new();
+  u3H->ban_u.rev_p = u3h_new();
   u3H->ban_u.nxt_d = 0;
 }
 
@@ -678,6 +679,9 @@ _find_home(void)
   }
   if ( !u3H->ban_u.res_p ) {
     u3H->ban_u.res_p = u3h_new();
+  }
+  if ( !u3H->ban_u.rev_p ) {
+    u3H->ban_u.rev_p = u3h_new();
   }
   if ( !u3R->lop_p )     u3R->lop_p = u3h_new();
   if ( !u3R->cax.for_p ) u3R->cax.for_p = u3h_new_cache(u3C.per_w);
