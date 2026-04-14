@@ -407,8 +407,12 @@ u3_blob_load(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
   //  use u3i_slab (c3_d length) to correctly handle blobs >4 GiB.
   //  bloq 3 = bytes; len_d = byte count.
   //
+  //  NB: use u3i_slab_init (not u3i_slab_bare) so the trailing bytes of
+  //  the last loom word are zeroed when len_d isn't word-aligned.
+  //  Otherwise u3r_met/u3r_word/etc. would read garbage from those bytes.
+  //
   u3i_slab sab_u;
-  u3i_slab_bare(&sab_u, 3, len_d);
+  u3i_slab_init(&sab_u, 3, len_d);
   memcpy(sab_u.buf_y, map_v, (size_t)len_d);
   munmap(map_v, (size_t)len_d);
 

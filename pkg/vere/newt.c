@@ -67,7 +67,8 @@ _newt_meat_poke(u3_moat* mot_u)
   if ( met_u ) {
     uv_timer_start(&mot_u->tim_u, _newt_meat_next_cb, 0, 0);
 
-    if ( c3y == mot_u->pok_f(mot_u->ptr_v, met_u->len_d, met_u->hun_y) ) {
+    if ( c3y == mot_u->pok_f(mot_u->ptr_v, met_u->ver_y,
+                             met_u->len_d, met_u->hun_y) ) {
       mot_u->ext_u = met_u->nex_u;
 
       if ( !mot_u->ext_u ) {

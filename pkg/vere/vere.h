@@ -51,8 +51,12 @@
       } u3_lane;
 
     /* u3_moor_poke: poke callback function.
+    **
+    **   ver_y is the newt protocol version byte from the message header
+    **   (0x00 = jam, 0x01 = ram).  Handlers that decode the payload use it
+    **   to pick the correct deserializer; raw-bytes handlers may ignore it.
     */
-      typedef c3_o (*u3_moor_poke)(void*, c3_d, c3_y*);
+      typedef c3_o (*u3_moor_poke)(void*, c3_y ver_y, c3_d, c3_y*);
 
     /* u3_moor_bail: bailout callback function.
     */

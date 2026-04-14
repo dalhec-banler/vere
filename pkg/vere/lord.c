@@ -557,7 +557,7 @@ _lord_plea_work(u3_lord* god_u, u3_noun dat)
 /* _lord_on_plea(): handle plea from serf.
 */
 static c3_o
-_lord_on_plea(void* ptr_v, c3_d len_d, c3_y* byt_y)
+_lord_on_plea(void* ptr_v, c3_y ver_y, c3_d len_d, c3_y* byt_y)
 {
   u3_lord* god_u = ptr_v;
   u3_noun    tag, dat;
@@ -572,12 +572,11 @@ _lord_on_plea(void* ptr_v, c3_d len_d, c3_y* byt_y)
   u3t_event_trace("king ipc cue", 'B');
 #endif
 
-  //  decode incoming message: try ram first, fall back to jam
+  //  pick decoder by protocol version (0x01 = ram, 0x00 = jam)
   //
-  jar = u3s_tap_xeno(len_d, byt_y);
-  if ( u3_none == jar ) {
-    jar = u3s_cue_xeno_with(god_u->sil_u, len_d, byt_y);
-  }
+  jar = ( 0x01 == ver_y )
+      ? u3s_tap_xeno(len_d, byt_y)
+      : u3s_cue_xeno_with(god_u->sil_u, len_d, byt_y);
 
 #ifdef LORD_TRACE_CUE
   u3t_event_trace("king ipc cue", 'E');
@@ -1281,16 +1280,15 @@ _lord_on_serf_boot_bail(void*       ptr_v,
 /* _lord_on_plea_boot(): handle plea from serf.
 */
 static c3_o
-_lord_on_plea_boot(void* ptr_v, c3_d len_d, c3_y* byt_y)
+_lord_on_plea_boot(void* ptr_v, c3_y ver_y, c3_d len_d, c3_y* byt_y)
 {
   _lord_boot* bot_u = ptr_v;
 
-  //  decode incoming message: try ram first, fall back to jam
+  //  pick decoder by protocol version (0x01 = ram, 0x00 = jam)
   //
-  u3_weak jar = u3s_tap_xeno(len_d, byt_y);
-  if ( u3_none == jar ) {
-    jar = u3s_cue_xeno_with(bot_u->sil_u, len_d, byt_y);
-  }
+  u3_weak jar = ( 0x01 == ver_y )
+              ? u3s_tap_xeno(len_d, byt_y)
+              : u3s_cue_xeno_with(bot_u->sil_u, len_d, byt_y);
   u3_noun tag, dat;
 
   if ( u3_none == jar ) {

@@ -1218,7 +1218,7 @@ _mars_step_trace(const c3_c* dir_c)
 /* u3_mars_kick(): maybe perform a task.
 */
 c3_o
-u3_mars_kick(void* ram_u, c3_d len_d, c3_y* hun_y)
+u3_mars_kick(void* ram_u, c3_y ver_y, c3_d len_d, c3_y* hun_y)
 {
   u3_mars* mar_u = ram_u;
   c3_o ret_o = c3n;
@@ -1228,12 +1228,11 @@ u3_mars_kick(void* ram_u, c3_d len_d, c3_y* hun_y)
   //  XX optimize for stateless tasks w/ peek-next
   //
   if ( u3_mars_work_e == mar_u->sat_e ) {
-    //  decode incoming message: try ram first, fall back to jam
+    //  pick decoder by protocol version (0x01 = ram, 0x00 = jam)
     //
-    u3_weak jar = u3s_tap_xeno(len_d, hun_y);
-    if ( u3_none == jar ) {
-      jar = u3s_cue_xeno_with(mar_u->sil_u, len_d, hun_y);
-    }
+    u3_weak jar = ( 0x01 == ver_y )
+                ? u3s_tap_xeno(len_d, hun_y)
+                : u3s_cue_xeno_with(mar_u->sil_u, len_d, hun_y);
 
     //  parse errors are fatal
     //
@@ -2231,7 +2230,7 @@ u3_mars_make(u3_mars* mar_u)
 *
 */
 c3_o
-u3_mars_boot(u3_mars* mar_u, c3_d len_d, c3_y* hun_y)
+u3_mars_boot(u3_mars* mar_u, c3_y ver_y, c3_d len_d, c3_y* hun_y)
 {
   u3_disk*     log_u = mar_u->log_u;
   u3_boot_opts inp_u;
@@ -2256,19 +2255,11 @@ u3_mars_boot(u3_mars* mar_u, c3_d len_d, c3_y* hun_y)
   }
 
   {
-    //  decode boot message: try ram first, fall back to jam
+    //  pick decoder by protocol version (0x01 = ram, 0x00 = jam)
     //
-    u3_weak jar = u3s_tap_xeno(len_d, hun_y);
-    if ( u3_none == jar ) {
-      fprintf(stderr, "boot: tap failed (len=%" PRIu64 " hdr=%02x%02x%02x%02x%02x), trying cue\r\n",
-              len_d,
-              (len_d > 0) ? hun_y[0] : 0,
-              (len_d > 1) ? hun_y[1] : 0,
-              (len_d > 2) ? hun_y[2] : 0,
-              (len_d > 3) ? hun_y[3] : 0,
-              (len_d > 4) ? hun_y[4] : 0);
-      jar = u3s_cue_xeno(len_d, hun_y);
-    }
+    u3_weak jar = ( 0x01 == ver_y )
+                ? u3s_tap_xeno(len_d, hun_y)
+                : u3s_cue_xeno(len_d, hun_y);
     if (  (u3_none == jar)
        || (c3n == u3r_p(jar, c3__boot, &com)) )
     {
