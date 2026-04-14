@@ -131,10 +131,14 @@ u3_newt_decode(u3_moat* mot_u, c3_y* buf_y, c3_d len_d)
             return c3n;
           }
 
-          //  await body, stash version
+          //  NB: hed_y points into mes_u->hed_u, which shares storage with
+          //  mes_u->tal_u via a union.  _newt_mess_tail writes tal_u.met_u,
+          //  clobbering hed_y[0..4].  Capture the version byte BEFORE that
+          //  write, then stash it into the allocated meat.
           //
+          c3_y ver_y = hed_y[0];
           _newt_mess_tail(mes_u, met_d);
-          mes_u->tal_u.met_u->ver_y = hed_y[0];
+          mes_u->tal_u.met_u->ver_y = ver_y;
         }
       } break;
 
