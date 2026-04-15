@@ -2467,6 +2467,13 @@ u3r_blob_map(u3_atom a, c3_d* len_d)
     return 0;
   }
 
+  //  mirror u3_blob_load / u3_blob_save_fd: we read these forward and
+  //  rarely twice.  MADV_SEQUENTIAL lets the kernel page ahead and drop
+  //  pages we've already passed, keeping the HTTP-streaming page cache
+  //  bounded regardless of file size.
+  //
+  madvise(map_v, (size_t)*len_d, MADV_SEQUENTIAL);
+
   return (const c3_y*)map_v;
 }
 
