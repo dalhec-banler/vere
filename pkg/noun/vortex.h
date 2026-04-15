@@ -55,13 +55,19 @@
 
     /* u3v_home: all internal (within image) state.
     **       NB: version must first for ease of migration.
+    **
+    **   ban_u sits at the end so pre-blob-storage V5 snapshots still
+    **   load cleanly: old binaries never wrote past their (smaller)
+    **   sizeof(u3v_home), so the bytes at ban_u's new position are
+    **   reliably zero (MAP_ANON origin, persisted in saved pages).
+    **   _find_home's lazy-init turns those zeros into empty HAMTs.
     */
       typedef struct _u3v_home {
         u3v_version ver_d;                //  version number
         c3_d        pam_d;                //  parameters
         u3v_arvo    arv_u;                //  arvo state
-        u3v_bank    ban_u;                //  blob bank
         u3a_road    rod_u;                //  storage state
+        u3v_bank    ban_u;                //  blob bank (NB: must stay last)
       } u3v_home;
 
 
