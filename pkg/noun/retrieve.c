@@ -1205,6 +1205,92 @@ u3r_bytes_all(c3_w* len_w, u3_atom a)
   return u3r_bytes_alloc(0, met_w, a);
 }
 
+/* u3r_view_init(): open a read-only byte view of (a).
+**
+**   For bob atoms, u3r_blob_map gives us direct access to the mmap'd
+**   blob file — no loom allocation.  For everything else, fall back
+**   to u3r_bytes_alloc (heap buffer + copy), preserving the existing
+**   u3r_bytes_all semantics.
+*/
+void
+u3r_view_init(u3r_view* vu_u, u3_atom a)
+{
+  c3_w met_w = u3r_met(3, a);
+  vu_u->len_w = met_w;
+  vu_u->map_d = 0;
+  vu_u->ali_y = 0;
+  vu_u->byt_y = 0;
+
+  if ( 0 == met_w ) {
+    return;
+  }
+
+  if ( c3y == u3a_is_bob(a) ) {
+    c3_d        map_d = 0;
+    const c3_y* map_y = u3r_blob_map(a, &map_d);
+    if ( map_y ) {
+      vu_u->byt_y = map_y;
+      vu_u->map_d = map_d;
+      return;
+    }
+    //  fall through to alloc-and-copy; note that u3r_bytes_alloc below
+    //  will itself bail via u3r_blob_load if the blob really is missing
+  }
+
+  c3_y* buf_y = u3r_bytes_alloc(0, met_w, a);
+  vu_u->byt_y = buf_y;
+  vu_u->ali_y = buf_y;
+}
+
+/* u3r_view_padded(): open a view of exactly [wid_w] bytes (zero-padded).
+*/
+void
+u3r_view_padded(u3r_view* vu_u, u3_atom a, c3_w wid_w)
+{
+  u3r_view_init(vu_u, a);
+
+  //  atom has enough bytes — keep the zero-copy view; just cap len_w
+  //
+  if ( vu_u->len_w >= wid_w ) {
+    vu_u->len_w = wid_w;
+    return;
+  }
+
+  //  atom is shorter — allocate wid_w bytes, copy what's there, zero
+  //  the tail.  release the original backing (mmap or heap) and re-
+  //  point the view at the padded buffer.
+  //
+  c3_y* pad_y = u3a_malloc(wid_w);
+  if ( vu_u->len_w && vu_u->byt_y ) {
+    memcpy(pad_y, vu_u->byt_y, vu_u->len_w);
+  }
+  memset(pad_y + vu_u->len_w, 0, wid_w - vu_u->len_w);
+
+  u3r_view_done(vu_u);
+
+  vu_u->byt_y = pad_y;
+  vu_u->len_w = wid_w;
+  vu_u->map_d = 0;
+  vu_u->ali_y = pad_y;
+}
+
+/* u3r_view_done(): release the view's backing memory.
+*/
+void
+u3r_view_done(u3r_view* vu_u)
+{
+  if ( vu_u->map_d ) {
+    u3r_blob_unmap(vu_u->byt_y, vu_u->map_d);
+  }
+  else if ( vu_u->ali_y ) {
+    u3a_free(vu_u->ali_y);
+  }
+  vu_u->byt_y = 0;
+  vu_u->len_w = 0;
+  vu_u->map_d = 0;
+  vu_u->ali_y = 0;
+}
+
 /* _mpz_init_set_word():
 **
 **   Initialize (a_mp) from a single word (b_w).
