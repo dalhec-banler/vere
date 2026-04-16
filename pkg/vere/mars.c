@@ -95,6 +95,41 @@ _mars_pq_pop(_mars_lease_pq* pq_u)
   return r_u;
 }
 
+/* _mars_blob_delete(): callback for pkg/noun to delete blob files.
+*/
+static void
+_mars_blob_delete(c3_h mug_h, c3_w seq_w)
+{
+  u3_blob_delete(u3C.dir_c, mug_h, seq_w);
+}
+
+/* _blob_maybe_delete(): delete blob file iff fully unreferenced.
+**
+**   Checks all three ref sources: bob_p (live noun), blb_p (event log),
+**   rev_p (active lease).  Only unlinks the file when all are absent/zero.
+*/
+static void
+_blob_maybe_delete(c3_h mug_h, c3_w seq_w)
+{
+  c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+  u3_noun bid   = u3i_chub(bid_d);
+
+  c3_w    log_w = 0;
+  u3_weak lv    = u3h_get(u3H->ban_u.blb_p, bid);
+  if ( u3_none != lv ) {
+    u3r_safe_word(lv, &log_w);
+  }
+
+  c3_o has_bob = __(u3_none != u3h_get(u3H->ban_u.bob_p, bid));
+  c3_o has_lea = __(u3_none != u3h_get(u3H->ban_u.rev_p, bid));
+
+  u3z(bid);
+
+  if ( 0 == log_w && c3n == has_bob && c3n == has_lea ) {
+    u3_blob_delete(u3C.dir_c, mug_h, seq_w);
+  }
+}
+
 /*
 ::  peek=[gang (each path $%([%once @tas @tas path] [%beam @tas beam]))]
 ::  ovum=ovum
@@ -383,31 +418,20 @@ _mars_fact(u3_mars* mar_u,
           fprintf(blt_f, "%" PRIc3_h " %" PRIc3_w "\n", mug_h, seq_w);
         }
 
-        //  mark the lease (if any) for this blob as dead via reverse index.
-        //  The lease struct is freed later by the expiry sweeper when it
-        //  bubbles to the top of the PQ. res_p and rev_p entries are
-        //  removed here.
+        //  mark the lease (if any) as dead via rev_p.  the lease struct
+        //  is freed later by the expiry sweeper when it bubbles to the
+        //  top of the PQ.  rev_p entry removed now.
         //
         {
           u3_noun revkey = u3i_chub(acc.ids[i_z]);
           u3_weak rv     = u3h_get(u3H->ban_u.rev_p, revkey);
           if ( u3_none != rv ) {
-            c3_d res_d = 0;
-            u3r_safe_chub(rv, &res_d);
-
-            u3_noun rkey = u3i_chub(res_d);
-            u3_weak lv   = u3h_get(u3H->ban_u.res_p, rkey);
-            if ( u3_none != lv ) {
-              c3_d ptr_d = 0;
-              u3r_safe_chub(lv, &ptr_d);
-              u3v_lease* lea_u = (u3v_lease*)(uintptr_t)ptr_d;
-              if ( lea_u ) {
-                lea_u->dead_o = c3y;
-              }
-              u3h_del(u3H->ban_u.res_p, rkey);
+            c3_d ptr_d = 0;
+            u3r_safe_chub(rv, &ptr_d);
+            u3v_lease* lea_u = (u3v_lease*)(uintptr_t)ptr_d;
+            if ( lea_u ) {
+              lea_u->dead_o = c3y;
             }
-            u3z(rkey);
-
             u3h_del(u3H->ban_u.rev_p, revkey);
           }
           u3z(revkey);
@@ -779,38 +803,18 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
         break;
       }
 
-      //  expired lease — check if blob has any event-log refs
+      //  expired lease — remove from rev_p, then check full delete condition
       //
       _mars_pq_pop(&_mars_pq);
 
-      c3_d  bid_d = ((c3_d)top_u->mug_h << 32) | (c3_d)top_u->seq_w;
-      u3_noun bk  = u3i_chub(bid_d);
-      u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bk);
-      c3_w    ref_w = 0;
-      if ( u3_none != bv ) {
-        u3r_safe_word(bv, &ref_w);
-      }
-      u3z(bk);
-
-      if ( 0 == ref_w ) {
-        //  no event-log refs — blob was never committed; delete it
-        //
-        u3_blob_delete(u3C.dir_c, top_u->mug_h, top_u->seq_w);
-        fprintf(stderr, "mars: blob: expired lease, deleted %" PRIc3_h
-                        "/%" PRIc3_w "\r\n", top_u->mug_h, top_u->seq_w);
-      }
-
-      //  remove from res_p and rev_p
-      //
       {
-        u3_noun rkey = u3i_chub(top_u->res_d);
-        u3h_del(u3H->ban_u.res_p, rkey);
-        u3z(rkey);
-
+        c3_d    bid_d  = ((c3_d)top_u->mug_h << 32) | (c3_d)top_u->seq_w;
         u3_noun revkey = u3i_chub(bid_d);
         u3h_del(u3H->ban_u.rev_p, revkey);
         u3z(revkey);
       }
+
+      _blob_maybe_delete(top_u->mug_h, top_u->seq_w);
 
       c3_free(top_u);
     }
@@ -993,17 +997,13 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
         ok_o = u3_blob_install_stg(u3C.dir_c, stg_c, &mug_h, &seq_w);
 
         if ( c3y == ok_o ) {
-          //  create lease: holds a pending ref until the blob is committed
-          //  to the event log (in _mars_fact) or the lease expires.
-          //  blb_p tracks committed event-log refs only — not set here.
+          //  create lease: pending ref until blob is committed to the
+          //  event log (in _mars_fact) or the lease expires.
           //
-          c3_d res_d = u3H->ban_u.nxt_d++;
           u3v_lease* lea_u = c3_malloc(sizeof(*lea_u));
-          lea_u->res_d  = res_d;
           lea_u->mug_h  = mug_h;
           lea_u->seq_w  = seq_w;
           lea_u->dead_o = c3n;
-          //  TTL: 5 minutes from now (Unix ms)
           {
             struct timeval tv_u;
             gettimeofday(&tv_u, 0);
@@ -1013,16 +1013,10 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
           }
           snprintf(lea_u->stg_c, sizeof(lea_u->stg_c), "%s", stg_c);
 
-          //  record: res_d -> lease ptr (for commit-time dead-mark and sweep)
-          //
-          u3_noun rkey = u3i_chub(res_d);
-          u3h_put(u3H->ban_u.res_p, rkey, u3i_chub((c3_d)(uintptr_t)lea_u));
-          u3z(rkey);
-
-          //  record: blob_id -> res_d (reverse index for O(1) commit lookup)
+          //  record: bid -> lease ptr (for commit-time dead-mark)
           //
           u3_noun revkey = u3i_chub(((c3_d)mug_h << 32) | (c3_d)seq_w);
-          u3h_put(u3H->ban_u.rev_p, revkey, u3i_chub(res_d));
+          u3h_put(u3H->ban_u.rev_p, revkey, u3i_chub((c3_d)(uintptr_t)lea_u));
           u3z(revkey);
 
           //  push onto expiry PQ (ownership: PQ frees on pop)
@@ -1808,6 +1802,10 @@ u3_mars_work(u3_mars* mar_u)
   //
   u3C.sign_hold_f = _mars_sign_hold;
   u3C.sign_move_f = _mars_sign_move;
+
+  //  wire up blob delete callback (pkg/noun can't link pkg/vere)
+  //
+  u3C.blob_delete_f = _mars_blob_delete;
 
   //  XX do something better
   //

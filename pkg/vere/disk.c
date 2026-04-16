@@ -1229,7 +1229,8 @@ _disk_epoc_kill(u3_disk* log_u, c3_d epo_d)
   c3_c epo_c[8193];
   snprintf(epo_c, sizeof(epo_c), "%s/0i%" PRIc3_d, log_u->com_u->pax_c, epo_d);
 
-  //  process blobs.txt: decrement event-log refcounts; delete files at zero
+  //  process blobs.txt: decrement event-log refcounts.
+  //  after decrementing, check the full delete condition (log + noun + lease).
   //
   {
     c3_c blt_c[8193];
@@ -1254,12 +1255,16 @@ _disk_epoc_kill(u3_disk* log_u, c3_d epo_d)
           u3h_put(u3H->ban_u.blb_p, bk, u3i_word(ref_w - 1));
         }
         else {
-          //  last ref — delete blob file
-          u3_blob_delete(log_u->dir_u->pax_c, mug_h, seq_w);
           u3h_del(u3H->ban_u.blb_p, bk);
-          fprintf(stderr, "disk: gc: deleted blob %" PRIc3_h
-                          "/%" PRIc3_w " (epoch 0i%" PRIc3_d ")\r\n",
-                  mug_h, seq_w, epo_d);
+
+          //  check all three ref sources before deleting
+          //
+          c3_o has_bob = __(u3_none != u3h_get(u3H->ban_u.bob_p, bk));
+          c3_o has_lea = __(u3_none != u3h_get(u3H->ban_u.rev_p, bk));
+
+          if ( c3n == has_bob && c3n == has_lea ) {
+            u3_blob_delete(log_u->dir_u->pax_c, mug_h, seq_w);
+          }
         }
         u3z(bk);
       }

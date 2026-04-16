@@ -527,9 +527,8 @@ _pave_parts(void)
   //  initialize blob bank HAMTs
   //
   u3H->ban_u.blb_p = u3h_new();
-  u3H->ban_u.res_p = u3h_new();
+  u3H->ban_u.bob_p = u3h_new();
   u3H->ban_u.rev_p = u3h_new();
-  u3H->ban_u.nxt_d = 0;
 }
 
 static c3_d
@@ -677,8 +676,8 @@ _find_home(void)
   if ( !u3H->ban_u.blb_p ) {
     u3H->ban_u.blb_p = u3h_new();
   }
-  if ( !u3H->ban_u.res_p ) {
-    u3H->ban_u.res_p = u3h_new();
+  if ( !u3H->ban_u.bob_p ) {
+    u3H->ban_u.bob_p = u3h_new();
   }
   if ( !u3H->ban_u.rev_p ) {
     u3H->ban_u.rev_p = u3h_new();

@@ -1094,7 +1094,24 @@ u3r_byte(c3_w    a_w,
     }
     else return (255 & (b >> (a_w << 3)));
   }
-  else {
+
+  //  bob atom: mmap the backing file and read one byte.  mmap/munmap
+  //  is per-call overhead — callers that scan many bytes should open
+  //  a u3r_view themselves and index into vu.byt_y directly, rather
+  //  than calling u3r_byte in a loop.
+  //
+  if ( c3y == u3a_is_bob(b) ) {
+    c3_d        map_d = 0;
+    const c3_y* map_y = u3r_blob_map(b, &map_d);
+    if ( !map_y ) {
+      return 0;
+    }
+    c3_y res = ((c3_d)a_w < map_d) ? map_y[a_w] : 0;
+    u3r_blob_unmap(map_y, map_d);
+    return res;
+  }
+
+  {
     u3a_atom* b_u   = u3a_to_ptr(b);
     c3_y      vut_y = (a_w & (u3a_word_bytes - 1));
     c3_w      pix_w = (a_w >> u3a_word_bytes_shift);
@@ -2425,11 +2442,55 @@ _comp_words(c3_w a_w, c3_w b_w)
 c3_ys
 u3r_comp(u3_atom a, u3_atom b)
 {
+  if ( a == b ) return 0;
+
+  c3_o a_bob = ( c3y == u3a_is_cat(a) ) ? c3n : u3a_is_bob(a);
+  c3_o b_bob = ( c3y == u3a_is_cat(b) ) ? c3n : u3a_is_bob(b);
+
+  //  bob vs bob with matching (mug, seq): blob store is content-addressed
+  //  and deduplicates within a bucket, so same id means byte-equal content.
+  //
+  if ( (c3y == a_bob) && (c3y == b_bob) ) {
+    if ( (u3a_bob_mug(a) == u3a_bob_mug(b)) &&
+         (u3a_bob_seq(a) == u3a_bob_seq(b)) )
+    {
+      return 0;
+    }
+  }
+
+  //  any comparison touching a bob goes through u3r_view (mmap for
+  //  bobs, heap-alloc fallback for normal atoms) and compares by
+  //  significant-byte length then MSB-first byte sequence.  The
+  //  non-bob paths below use the faster word-at-a-time compare.
+  //
+  if ( (c3y == a_bob) || (c3y == b_bob) ) {
+    u3r_view va_u, vb_u;
+    u3r_view_init(&va_u, a);
+    u3r_view_init(&vb_u, b);
+
+    c3_ys res;
+    if ( va_u.len_w != vb_u.len_w ) {
+      res = _comp_words(va_u.len_w, vb_u.len_w);
+    }
+    else {
+      res = 0;
+      for ( c3_w i_w = va_u.len_w; i_w--; ) {
+        if ( va_u.byt_y[i_w] != vb_u.byt_y[i_w] ) {
+          res = (c3_ys)(va_u.byt_y[i_w] > vb_u.byt_y[i_w])
+              - (c3_ys)(va_u.byt_y[i_w] < vb_u.byt_y[i_w]);
+          break;
+        }
+      }
+    }
+
+    u3r_view_done(&va_u);
+    u3r_view_done(&vb_u);
+    return res;
+  }
+
   if (c3y == u3a_is_cat(a) || c3y == u3a_is_cat(b)) {
     return _comp_words(a, b);
   }
-  
-  if ( a == b ) return 0;
 
   u3a_atom* a_u = u3a_to_ptr(a);
   u3a_atom* b_u = u3a_to_ptr(b);

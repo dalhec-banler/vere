@@ -873,6 +873,37 @@ _me_gain_south(u3_noun dog)
   }
 }
 
+/* _me_bob_dead(): handle a bob atom whose loom refcount just hit zero.
+**
+**   Removes the atom from the bob_p interning index.  If the log
+**   refcount (blb_p) and lease map (rev_p) are also empty, deletes
+**   the backing blob file via the registered callback.
+*/
+static void
+_me_bob_dead(u3a_atom* atm_u)
+{
+  c3_h mug_h = atm_u->mug_h;
+  c3_w seq_w = atm_u->buf_w[0];
+  c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+  u3_noun bid = u3i_chub(bid_d);
+
+  u3h_del(u3H->ban_u.bob_p, bid);
+
+  c3_w    log_w = 0;
+  u3_weak lv    = u3h_get(u3H->ban_u.blb_p, bid);
+  if ( u3_none != lv ) {
+    u3r_safe_word(lv, &log_w);
+  }
+
+  c3_o has_lea = __(u3_none != u3h_get(u3H->ban_u.rev_p, bid));
+
+  u3z(bid);
+
+  if ( 0 == log_w && c3n == has_lea && u3C.blob_delete_f ) {
+    u3C.blob_delete_f(mug_h, seq_w);
+  }
+}
+
 /* _me_lose_north(): lose on a north road.
 */
 static void
@@ -905,6 +936,10 @@ top:
           }
         }
         else {
+          u3a_atom* atm_u = (u3a_atom*)box_u;
+          if ( atm_u->len_w & u3a_blob_flag ) {
+            _me_bob_dead(atm_u);
+          }
           u3a_wfree(box_u);
         }
       }
@@ -944,6 +979,10 @@ top:
           }
         }
         else {
+          u3a_atom* atm_u = (u3a_atom*)box_u;
+          if ( atm_u->len_w & u3a_blob_flag ) {
+            _me_bob_dead(atm_u);
+          }
           u3a_wfree(box_u);
         }
       }

@@ -954,21 +954,30 @@ u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
 u3_noun
 u3s_cue_atom(u3_atom a)
 {
-  c3_w  len_w = u3r_met(3, a);
-  c3_y* byt_y;
-
   // XX assumes little-endian
   //
   if ( c3y == u3a_is_cat(a) ) {
-     byt_y = (c3_y*)&a;
-   }
-   else {
-     u3_assert(c3n == u3a_is_bob(a));
-     u3a_atom* vat_u = u3a_to_ptr(a);
-     byt_y = (c3_y*)vat_u->buf_w;
-   }
+    c3_w len_w = u3r_met(3, a);
+    return u3s_cue_bytes((c3_d)len_w, (c3_y*)&a);
+  }
 
-   return u3s_cue_bytes((c3_d)len_w, byt_y);
+  //  bob atom: mmap the backing file instead of dereferencing buf_w
+  //  (which for a bob would yield seq_w).  The view stays live for
+  //  the whole cue so the bitstream reader can scan freely.
+  //
+  if ( c3y == u3a_is_bob(a) ) {
+    u3r_view vu_u;
+    u3r_view_init(&vu_u, a);
+    u3_noun res = u3s_cue_bytes((c3_d)vu_u.len_w, (c3_y*)vu_u.byt_y);
+    u3r_view_done(&vu_u);
+    return res;
+  }
+
+  {
+    c3_w      len_w = u3r_met(3, a);
+    u3a_atom* vat_u = u3a_to_ptr(a);
+    return u3s_cue_bytes((c3_d)len_w, (c3_y*)vat_u->buf_w);
+  }
 }
 
 /* _cs_etch_ud_size(): output length in @ud for given mpz_t.

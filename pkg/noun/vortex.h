@@ -21,16 +21,15 @@
     /* u3v_lease: active staging reservation in the blob store.
     **
     **   Created when Mars installs a blob (receives %blob-install).
-    **   Holds one u3a_blob.use_w ref until the owning event is committed
-    **   to the event log (at which point the ref becomes an event-log ref),
-    **   or until the lease expires (TTL).
+    **   Holds a pending ref until the owning event is committed to the
+    **   event log (at which point the ref becomes an event-log ref in
+    **   blb_p), or until the lease expires (TTL).
     **
-    **   dead_o: c3y after the lease has been committed (or otherwise invalidated).
-    **   Set by _mars_fact via the reverse index; the lease pointer may remain in
-    **   the expiry priority queue until it bubbles to the top and is freed.
+    **   dead_o: c3y after the lease has been committed (or otherwise
+    **   invalidated).  Set by _mars_fact via rev_p; the struct may
+    **   remain in the expiry PQ until it bubbles to the top.
     */
       typedef struct _u3v_lease {
-        c3_d  res_d;        //  reservation id (monotonic counter)
         c3_d  exp_d;        //  expiry time (Unix ms); 0 = no expiry
         c3_h  mug_h;        //  blob mug
         c3_w  seq_w;        //  blob seq within mug bucket
@@ -41,16 +40,18 @@
     /* u3v_bank: loom-resident blob bank.
     **
     **   Lives in u3v_home, checkpointed in image.bin.
-    **   blb_p: HAMT mapping blob_id (u64 = mug<<32|seq) -> u3a_blob loom offset
-    **   res_p: HAMT mapping res_id  (u64)               -> u3v_lease loom offset
-    **   rev_p: HAMT mapping blob_id (u64 = mug<<32|seq) -> res_d
-    **   nxt_d: monotonic reservation counter
+    **
+    **   blb_p: HAMT  bid -> count  (event-log refcount per blob)
+    **   bob_p: HAMT  bid -> offset (interned bob atom loom offsets)
+    **   rev_p: HAMT  bid -> ptr    (active u3v_lease pointers)
+    **
+    **   A blob file is deleted when all three are empty for that bid:
+    **   blb_p count == 0, bob_p absent, rev_p absent.
     */
       typedef struct _u3v_bank {
-        u3p(u3h_root) blb_p;  //  blob_id -> u3a_blob*
-        u3p(u3h_root) res_p;  //  res_id  -> u3v_lease*
-        u3p(u3h_root) rev_p;  //  blob_id -> res_d
-        c3_d          nxt_d;  //  next reservation id
+        u3p(u3h_root) blb_p;  //  blob_id -> log refcount
+        u3p(u3h_root) bob_p;  //  blob_id -> bob atom loom offset
+        u3p(u3h_root) rev_p;  //  blob_id -> u3v_lease* (active leases)
       } u3v_bank;
 
     /* u3v_home: all internal (within image) state.

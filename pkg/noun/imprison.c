@@ -2,11 +2,13 @@
 
 #include "imprison.h"
 
+#include "hashtable.h"
 #include "jets/k.h"
 #include "jets/q.h"
 #include "manage.h"
 #include "retrieve.h"
 #include "trace.h"
+#include "vortex.h"
 #include "xtract.h"
 
 #if defined(__x86_64__)
@@ -832,16 +834,33 @@ u3i_vmolt(u3_noun som, u3i_molt_pair pairs[], c3_z len_z)
   return pro;
 }
 
-/* u3i_blob(): construct a bob atom (blob reference).
+/* u3i_blob(): construct or intern a bob atom (blob reference).
 **
 **   A bob atom is an indirect atom with the MSB of len_w set.
 **   [mug_h] is the 31-bit mug of the content (stored in mug_h and used
 **   as the blob directory name).
 **   [seq_w] is the sequence number within $pier/.urb/bob/<mug>/.
+**
+**   Interned: at most one bob atom exists per (mug, seq) pair.
+**   bob_p maps bid -> loom offset of the canonical atom.
 */
 u3_atom
 u3i_blob(c3_h mug_h, c3_w seq_w)
 {
+  c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+  u3_noun bid   = u3i_chub(bid_d);
+
+  //  check for an existing interned bob atom
+  //
+  u3_weak got = u3h_get(u3H->ban_u.bob_p, bid);
+  if ( u3_none != got ) {
+    c3_w off_w = 0;
+    u3r_safe_word(got, &off_w);
+    u3z(bid);
+    u3_atom bob = u3a_to_pug(off_w);
+    return u3k(bob);
+  }
+
   //  allocate: u3a_atom header + 1 word for seq_w
   //
   c3_w*     nov_w = u3a_walloc(1 + c3_wiseof(u3a_atom));
@@ -849,8 +868,14 @@ u3i_blob(c3_h mug_h, c3_w seq_w)
 
   vat_u->use_w   = 1;
   vat_u->mug_h   = mug_h;
-  vat_u->len_w   = 1 | u3a_blob_flag;   // 1 word of payload + bob flag
+  vat_u->len_w   = 1 | u3a_blob_flag;
   vat_u->buf_w[0] = seq_w;
 
-  return u3a_to_pug(u3a_outa(nov_w));
+  //  store loom offset (not a noun ref) in bob_p
+  //
+  c3_w off_w = u3a_outa(nov_w);
+  u3h_put(u3H->ban_u.bob_p, bid, u3i_word(off_w));
+  u3z(bid);
+
+  return u3a_to_pug(off_w);
 }
