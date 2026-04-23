@@ -275,9 +275,6 @@ _js_encode(_jam_shax* ctx, u3_noun a)
 u3_atom
 u3qe_jam_shax(u3_noun a)
 {
-  fprintf(stderr, "jam-shax jet: firing (bob=%c)\r\n",
-          (!_(u3a_is_cat(a)) && _(u3a_is_cell(a)) && !_(u3a_is_cat(u3t(a))) && c3y == u3a_is_bob(u3t(a))) ? 'y' : 'n');
-
   _jam_shax ctx;
   _js_init(&ctx);
   _js_encode(&ctx, a);

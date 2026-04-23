@@ -1196,23 +1196,25 @@ _http_req_dispatch(u3_hreq* req_u, u3_noun req)
       byte_range rng_u;
       c3_o rng_o = _get_range(req_headers, &rng_u);
 
-      // prepare spur for eyre range scry
+      //  if no Range header, synthesize bytes=0- so the response is
+      //  always a chunked 206 with Content-Range (not a 200 with the
+      //  entire body).  this lets the browser discover accept-ranges
+      //  and switch to Range-based seeking — critical for large video
+      //  files with moov-at-end.
       //
-      u3_noun spur;
       if ( c3n == rng_o ) {
-        // full range: '/range/0//foo'
-        spur = u3nq(u3i_string("range"), c3_s1('0'), u3_blip, u3k(bem.pur));
+        rng_u.beg_z = 0;
+        rng_u.end_z = SIZE_MAX;
       }
-      else {
-        _chunk_align(&rng_u);
 
-        u3_atom beg = ( SIZE_MAX == rng_u.beg_z) ?
-                      u3_blip : u3dc("scot", c3__ud, u3i_chub(rng_u.beg_z));
-        u3_atom end = ( SIZE_MAX == rng_u.end_z) ?
-                      u3_blip : u3dc("scot", c3__ud, u3i_chub(rng_u.end_z));
+      _chunk_align(&rng_u);
 
-        spur = u3nq(u3i_string("range"), beg, end, u3k(bem.pur));
-      }
+      u3_atom beg = ( SIZE_MAX == rng_u.beg_z) ?
+                    u3_blip : u3dc("scot", c3__ud, u3i_chub(rng_u.beg_z));
+      u3_atom end = ( SIZE_MAX == rng_u.end_z) ?
+                    u3_blip : u3dc("scot", c3__ud, u3i_chub(rng_u.end_z));
+
+      u3_noun spur = u3nq(u3i_string("range"), beg, end, u3k(bem.pur));
 
       if ( c3n == _http_peek_dispatch(req_u, &bem, gang, spur) ) {
         u3z(req_u->peq_u->pax);
@@ -1563,6 +1565,7 @@ _http_start_respond(u3_hreq* req_u,
   u3_hhed* deh_u = hed_u;
 
   c3_i has_len_i = 0;
+  size_t con_len = 0;
 
   while ( 0 != hed_u ) {
     if ( 0x200 <= rec_u->version ) {
@@ -1575,6 +1578,7 @@ _http_start_respond(u3_hreq* req_u,
     }
     if ( 0 == strncmp(hed_u->nam_c, "content-length", 14) ) {
       has_len_i = 1;
+      con_len   = strtoull(hed_u->val_c, 0, 10);
     }
     else {
       h2o_add_header_by_str(&rec_u->pool, &rec_u->res.headers,
@@ -1599,12 +1603,13 @@ _http_start_respond(u3_hreq* req_u,
   gen_u->hed_u = deh_u;
   gen_u->req_u = req_u;
 
-  //  if we don't explicitly set this field, h2o will send with
-  //  transfer-encoding: chunked
+  //  tell h2o the true content-length from eyre's response headers.
+  //  without this, h2o defaults to transfer-encoding: chunked.
+  //  the old code used gen_u->bod_u->len_w which is only the first
+  //  chunk (1MB for bob-streamed bodies), not the total — wrong.
   //
   if ( 1 == has_len_i ) {
-    rec_u->res.content_length = ( 0 == gen_u->bod_u ) ?
-                                0 : gen_u->bod_u->len_w;
+    rec_u->res.content_length = con_len;
   }
 
   req_u->gen_u = gen_u;

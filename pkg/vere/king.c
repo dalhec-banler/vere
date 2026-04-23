@@ -19,6 +19,16 @@ u3_king u3_King;
 
 static const c3_c* ver_hos_c = "https://bootstrap.urbit.org/vere";
 
+/* _king_blob_del(): king-side del_f — release a blob lease via IPC.
+*/
+static void
+_king_blob_del(c3_h mug_h, c3_w seq_w)
+{
+  if ( u3K.pir_u && u3K.pir_u->god_u ) {
+    u3_lord_blob_release(u3K.pir_u->god_u, mug_h, seq_w);
+  }
+}
+
 //  stash config flags for worker
 //
 static c3_h sag_h;
@@ -186,6 +196,8 @@ _king_boot_done(void* ptr_v, c3_o ret_o)
   }
 
   u3K.pir_u = u3_pier_stay(sag_h, u3i_string(u3_Host.dir_c), rift);
+
+  u3C.blob_del_f = _king_blob_del;
 }
 
 /* _king_prop(): events from prop arguments
@@ -339,6 +351,8 @@ _king_pier(u3_noun pier)
 
   u3K.pir_u = u3_pier_stay(sag_h, u3k(u3t(pier)), u3_none);
   u3z(pier);
+
+  u3C.blob_del_f = _king_blob_del;
 }
 
 /* king_curl_alloc(): allocate a response buffer for curl

@@ -1085,6 +1085,16 @@
                              void*    ptr_v,
                              void   (*fun_f)(void*, c3_h, c3_w, c3_o));
 
+      /* u3_lord_blob_lease(): tell Mars king is acquiring a blob lease.
+      */
+        void
+        u3_lord_blob_lease(u3_lord* god_u, c3_h mug_h, c3_w seq_w);
+
+      /* u3_lord_blob_release(): tell Mars king is releasing a blob lease.
+      */
+        void
+        u3_lord_blob_release(u3_lord* god_u, c3_h mug_h, c3_w seq_w);
+
     /**  Filesystem (async).
     **/
       /* u3_foil_folder(): load directory, blockingly.  create if nonexistent.

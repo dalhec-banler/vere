@@ -875,9 +875,10 @@ _me_gain_south(u3_noun dog)
 
 /* _me_bob_dead(): handle a bob atom whose loom refcount just hit zero.
 **
-**   Removes the atom from the bob_p interning index.  If the log
-**   refcount (blb_p) and lease map (rev_p) are also empty, deletes
-**   the backing blob file via the registered callback.
+**   Removes the atom from the bob_p interning index.  Then checks
+**   the deletion condition: log_w == 0 && les_w == 0 && bob_p absent.
+**   Calls u3C.blob_del_f to either release the lease (king) or
+**   delete the blob file (mars).
 */
 static void
 _me_bob_dead(u3a_atom* atm_u)
@@ -887,20 +888,35 @@ _me_bob_dead(u3a_atom* atm_u)
   c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
   u3_noun bid = u3i_chub(bid_d);
 
+  //  remove from interning index (noun is about to be freed)
+  //
   u3h_del(u3H->ban_u.bob_p, bid);
 
-  c3_w    log_w = 0;
-  u3_weak lv    = u3h_get(u3H->ban_u.blb_p, bid);
-  if ( u3_none != lv ) {
-    u3r_safe_word(lv, &log_w);
-  }
-
-  c3_o has_lea = __(u3_none != u3h_get(u3H->ban_u.rev_p, bid));
-
+  //  check u3a_blob refcounts
+  //
+  u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bid);
   u3z(bid);
 
-  if ( 0 == log_w && c3n == has_lea && u3C.blob_delete_f ) {
-    u3C.blob_delete_f(mug_h, seq_w);
+  if ( u3C.blob_del_f ) {
+    if ( u3_none == bv ) {
+      //  no u3a_blob entry → blob was never registered or already deleted.
+      //  call del_f anyway (king needs to release the lease).
+      //
+      u3C.blob_del_f(mug_h, seq_w);
+    }
+    else {
+      //  u3a_blob exists — extract and check refcounts.
+      //  bob_p[bid] is already absent (just removed above).
+      //  if log_w and les_w are both 0, delete the blob.
+      //
+      c3_w off_w = 0;
+      u3r_safe_word(bv, &off_w);
+      u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
+
+      if ( 0 == blb_u->log_w && 0 == blb_u->les_w ) {
+        u3C.blob_del_f(mug_h, seq_w);
+      }
+    }
   }
 }
 

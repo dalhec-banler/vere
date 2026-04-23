@@ -1229,48 +1229,11 @@ _disk_epoc_kill(u3_disk* log_u, c3_d epo_d)
   c3_c epo_c[8193];
   snprintf(epo_c, sizeof(epo_c), "%s/0i%" PRIc3_d, log_u->com_u->pax_c, epo_d);
 
-  //  process blobs.txt: decrement event-log refcounts.
-  //  after decrementing, check the full delete condition (log + noun + lease).
+  //  TODO: scan LMDB range for blob-ref events (tag 0x02, op 0x03)
+  //  in the chopped epoch and decrement u3a_blob.log_w for each.
+  //  Then call _blob_maybe_delete for each affected bid.
+  //  For now, log_w is only incremented (never decremented on chop).
   //
-  {
-    c3_c blt_c[8193];
-    snprintf(blt_c, sizeof(blt_c), "%s/blobs.txt", epo_c);
-    FILE* blt_f = fopen(blt_c, "r");
-    if ( blt_f ) {
-      while ( 1 ) {
-        uint32_t mug_i = 0, seq_i = 0;
-        if ( 2 != fscanf(blt_f, "%" SCNu32 " %" SCNu32, &mug_i, &seq_i) ) {
-          break;
-        }
-        c3_h mug_h = (c3_h)mug_i;
-        c3_w seq_w = (c3_w)seq_i;
-        c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-        u3_noun bk  = u3i_chub(bid_d);
-        u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bk);
-        c3_w    ref_w = 0;
-        if ( u3_none != bv ) {
-          u3r_safe_word(bv, &ref_w);
-        }
-        if ( ref_w > 1 ) {
-          u3h_put(u3H->ban_u.blb_p, bk, u3i_word(ref_w - 1));
-        }
-        else {
-          u3h_del(u3H->ban_u.blb_p, bk);
-
-          //  check all three ref sources before deleting
-          //
-          c3_o has_bob = __(u3_none != u3h_get(u3H->ban_u.bob_p, bk));
-          c3_o has_lea = __(u3_none != u3h_get(u3H->ban_u.rev_p, bk));
-
-          if ( c3n == has_bob && c3n == has_lea ) {
-            u3_blob_delete(log_u->dir_u->pax_c, mug_h, seq_w);
-          }
-        }
-        u3z(bk);
-      }
-      fclose(blt_f);
-    }
-  }
 
   //  delete files in epoch directory
   u3_dire* dir_u = u3_foil_folder(epo_c);
@@ -1564,8 +1527,6 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
   }
 
   //  delete all but the last two epochs.
-  //  _disk_epoc_kill reads each epoch's blobs.txt and decrements
-  //  blb_p refcounts, deleting blob files when they reach zero.
   //
   //    XX parameterize the number of epochs to chop
   //
@@ -1930,60 +1891,11 @@ typedef enum {
   _epoc_late = 4   // format from the future
 } _epoc_kind;
 
-/* _disk_blb_rebuild_from_epochs(): rebuild ban_u.blb_p from all epoch blobs.txt files.
-**
-**   Called after u3m_boot() so the loom (u3H) is live.
-**   Walks all epoch directories under .urb/log/, reads each blobs.txt,
-**   and increments the blb_p refcount for each referenced blob.
-**   Replaces any stale blb_p from the snapshot with a freshly-computed map.
-**
-**   Note: we do NOT u3h_free the old blb_p here.  The snapshot may have
-**   been saved with a larger loom, in which case the stale HAMT nodes may
-**   live on pages beyond the current loom's HEAP.len_w, and u3h_free would
-**   crash with "palloc: page out of heap".  The old nodes become dead loom
-**   memory and will be reclaimed at the next epoch roll / snapshot compaction.
+/* NOTE: _disk_blb_rebuild_from_epochs removed.
+**   Blob log-refs are now tracked via LMDB blob-ref events (tag 0x02),
+**   not via blobs.txt files.  u3a_blob structs in blb_p persist in the
+**   loom snapshot; on replay, blob-ref events reconstruct the counters.
 */
-static void
-_disk_blb_rebuild_from_epochs(u3_disk* log_u)
-{
-  //  discard stale snapshot blb_p; allocate a fresh, empty HAMT
-  //
-  u3H->ban_u.blb_p = u3h_new();
-
-  c3_z  epo_z = u3_disk_epoc_list(log_u, 0);
-  c3_d* epo_d = c3_malloc(epo_z * sizeof(c3_d));
-  u3_disk_epoc_list(log_u, epo_d);
-
-  for ( c3_z i_z = 0; i_z < epo_z; i_z++ ) {
-    c3_c blt_c[8193];
-    snprintf(blt_c, sizeof(blt_c), "%s/0i%" PRIc3_d "/blobs.txt",
-             log_u->com_u->pax_c, epo_d[i_z]);
-
-    FILE* blt_f = fopen(blt_c, "r");
-    if ( !blt_f ) {
-      continue;  //  no blobs.txt in this epoch (pre-VER3 or no blobs)
-    }
-
-    while ( 1 ) {
-      uint32_t mug_i = 0, seq_i = 0;
-      if ( 2 != fscanf(blt_f, "%" SCNu32 " %" SCNu32, &mug_i, &seq_i) ) {
-        break;
-      }
-      c3_d  bid_d = ((c3_d)(c3_h)mug_i << 32) | (c3_d)(c3_w)seq_i;
-      u3_noun bk  = u3i_chub(bid_d);
-      u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bk);
-      c3_w    ref_w = 0;
-      if ( u3_none != bv ) {
-        u3r_safe_word(bv, &ref_w);
-      }
-      u3h_put(u3H->ban_u.blb_p, bk, u3i_word(ref_w + 1));
-      u3z(bk);
-    }
-    fclose(blt_f);
-  }
-
-  c3_free(epo_d);
-}
 
 /* _disk_epoc_load(): load existing epoch, enumerating failures
 */
@@ -2157,9 +2069,9 @@ _disk_epoc_load(u3_disk* log_u, c3_d lat_d, u3_disk_load_e lod_e)
 
       u3m_boot(log_u->dir_u->pax_c, (size_t)1 << u3_Host.ops_u.lom_y); // XX confirm
 
-      //  rebuild blob refcount map from surviving epoch blobs.txt files
+      //  blob refcounts (u3a_blob in blb_p) persist in the loom snapshot.
+      //  on replay, LMDB blob-ref events will reconstruct log_w/les_w.
       //
-      _disk_blb_rebuild_from_epochs(log_u);
 
       if ( log_u->dun_d < u3A->eve_d ) {
         //  XX bad, add to enum

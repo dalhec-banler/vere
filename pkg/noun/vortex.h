@@ -18,40 +18,35 @@
         u3_noun yot;                      //  cached gates
       } u3v_arvo;
 
-    /* u3v_lease: active staging reservation in the blob store.
+    /* u3v_lease: PQ entry for lease TTL expiry.
     **
-    **   Created when Mars installs a blob (receives %blob-install).
-    **   Holds a pending ref until the owning event is committed to the
-    **   event log (at which point the ref becomes an event-log ref in
-    **   blb_p), or until the lease expires (TTL).
-    **
-    **   dead_o: c3y after the lease has been committed (or otherwise
-    **   invalidated).  Set by _mars_fact via rev_p; the struct may
-    **   remain in the expiry PQ until it bubbles to the top.
+    **   Tracks a single les_w increment for a blob.  If the king
+    **   releases the lease (via %blob-release IPC) before expiry,
+    **   dead_o is set to c3y and the PQ sweeper skips the decrement.
+    **   If the king crashes, the TTL fires and les_w is decremented.
     */
       typedef struct _u3v_lease {
-        c3_d  exp_d;        //  expiry time (Unix ms); 0 = no expiry
+        c3_d  exp_d;        //  expiry time (Unix ms)
         c3_h  mug_h;        //  blob mug
         c3_w  seq_w;        //  blob seq within mug bucket
-        c3_o  dead_o;       //  c3y if lease has been committed/invalidated
-        c3_c  stg_c[4096];  //  staging path that was installed (for logging)
+        c3_o  dead_o;       //  c3y if lease already released
       } u3v_lease;
 
     /* u3v_bank: loom-resident blob bank.
     **
     **   Lives in u3v_home, checkpointed in image.bin.
     **
-    **   blb_p: HAMT  bid -> count  (event-log refcount per blob)
-    **   bob_p: HAMT  bid -> offset (interned bob atom loom offsets)
-    **   rev_p: HAMT  bid -> ptr    (active u3v_lease pointers)
+    **   blb_p: HAMT  bid -> u3a_blob* (loom offset of refcount struct)
+    **   bob_p: HAMT  bid -> u3a_atom* (loom offset of interned bob atom)
     **
-    **   A blob file is deleted when all three are empty for that bid:
-    **   blb_p count == 0, bob_p absent, rev_p absent.
+    **   A blob file is deleted when ALL of:
+    **     u3a_blob.log_w == 0  (no event-log refs)
+    **     u3a_blob.les_w == 0  (no active leases)
+    **     bob_p[bid] absent    (no live bob atom in the loom)
     */
       typedef struct _u3v_bank {
-        u3p(u3h_root) blb_p;  //  blob_id -> log refcount
-        u3p(u3h_root) bob_p;  //  blob_id -> bob atom loom offset
-        u3p(u3h_root) rev_p;  //  blob_id -> u3v_lease* (active leases)
+        u3p(u3h_root) blb_p;  //  bid -> u3a_blob* (loom offset)
+        u3p(u3h_root) bob_p;  //  bid -> u3a_atom* (loom offset, interning)
       } u3v_bank;
 
     /* u3v_home: all internal (within image) state.

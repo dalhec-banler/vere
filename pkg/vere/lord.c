@@ -844,6 +844,26 @@ u3_lord_blob_install(u3_lord* god_u,
   _lord_writ_send(god_u, wit_u);
 }
 
+/* u3_lord_blob_lease(): tell Mars king is acquiring a blob lease.
+*/
+void
+u3_lord_blob_lease(u3_lord* god_u, c3_h mug_h, c3_w seq_w)
+{
+  _lord_send(god_u, u3nt(c3_s4('b','l','a','s'),
+                         u3i_word(mug_h),
+                         u3i_word(seq_w)));
+}
+
+/* u3_lord_blob_release(): tell Mars king is releasing a blob lease.
+*/
+void
+u3_lord_blob_release(u3_lord* god_u, c3_h mug_h, c3_w seq_w)
+{
+  _lord_send(god_u, u3nt(c3_s4('b','l','r','l'),
+                         u3i_word(mug_h),
+                         u3i_word(seq_w)));
+}
+
 /* u3_lord_save(): save a snapshot.
 */
 c3_o

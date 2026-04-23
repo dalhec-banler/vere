@@ -843,6 +843,8 @@ u3i_vmolt(u3_noun som, u3i_molt_pair pairs[], c3_z len_z)
 **
 **   Interned: at most one bob atom exists per (mug, seq) pair.
 **   bob_p maps bid -> loom offset of the canonical atom.
+**   blb_p maps bid -> loom offset of the u3a_blob refcount struct.
+**   If no u3a_blob exists yet, one is allocated with {log_w=0, les_w=0}.
 */
 u3_atom
 u3i_blob(c3_h mug_h, c3_w seq_w)
@@ -861,7 +863,7 @@ u3i_blob(c3_h mug_h, c3_w seq_w)
     return u3k(bob);
   }
 
-  //  allocate: u3a_atom header + 1 word for seq_w
+  //  allocate bob atom: u3a_atom header + 1 word for seq_w
   //
   c3_w*     nov_w = u3a_walloc(1 + c3_wiseof(u3a_atom));
   u3a_atom* vat_u = (void *)nov_w;
@@ -871,11 +873,29 @@ u3i_blob(c3_h mug_h, c3_w seq_w)
   vat_u->len_w   = 1 | u3a_blob_flag;
   vat_u->buf_w[0] = seq_w;
 
-  //  store loom offset (not a noun ref) in bob_p
+  //  store atom loom offset in bob_p (interning index)
   //
-  c3_w off_w = u3a_outa(nov_w);
-  u3h_put(u3H->ban_u.bob_p, bid, u3i_word(off_w));
-  u3z(bid);
+  c3_w atm_off_w = u3a_outa(nov_w);
+  u3h_put(u3H->ban_u.bob_p, bid, u3i_word(atm_off_w));
 
-  return u3a_to_pug(off_w);
+  //  ensure u3a_blob exists in blb_p
+  //
+  u3_weak bv = u3h_get(u3H->ban_u.blb_p, bid);
+  if ( u3_none == bv ) {
+    //  allocate fresh u3a_blob with zero refcounts
+    //
+    c3_w*     blb_w = u3a_walloc(c3_wiseof(u3a_blob));
+    u3a_blob* blb_u = (u3a_blob*)blb_w;
+    blb_u->log_w = 0;
+    blb_u->les_w = 0;
+    blb_u->mug_h = mug_h;
+    blb_u->seq_w = seq_w;
+    blb_u->siz_d = 0;  //  filled later by blob_save / blob_install
+
+    c3_w blb_off_w = u3a_outa(blb_w);
+    u3h_put(u3H->ban_u.blb_p, bid, u3i_word(blb_off_w));
+  }
+
+  u3z(bid);
+  return u3a_to_pug(atm_off_w);
 }

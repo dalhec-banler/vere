@@ -164,15 +164,21 @@
         u3_noun tel;
       } u3a_cell;
 
-    /* u3a_blob: loom-resident metadata for a committed blob.
+    /* u3a_blob: loom-resident metadata for a blob file.
     **
-    **   use_w: refcount from event-log refs + active leases.
-    **   Independent from u3a_atom.use_w (noun refcount).
-    **   A blob file is deleted when both use_w == 0 AND
-    **   no live bob atoms in the loom point to it.
+    **   Stored in ban_u.blb_p HAMT keyed by bid = (mug_h << 32) | seq_w.
+    **   Three independent ref-sources protect the backing file:
+    **
+    **     log_w  — event-log refs (inc on commit, dec on chop)
+    **     les_w  — lease refs (inc on king acquire, dec on release/expiry)
+    **     bob_p  — noun liveness (bob_p[bid] present ↔ live u3a_atom)
+    **
+    **   The blob file is deleted when ALL are zero:
+    **     log_w == 0 && les_w == 0 && bob_p[bid] absent
     */
       typedef struct __attribute__((aligned(4))) {
-        c3_w  use_w;   //  refcount: event-log refs + active leases
+        c3_w  log_w;   //  event-log refcount
+        c3_w  les_w;   //  lease refcount
         c3_h  mug_h;   //  31-bit content mug (= bucket dir name)
         c3_w  seq_w;   //  sequence number within bucket
         c3_d  siz_d;   //  byte size of blob file
