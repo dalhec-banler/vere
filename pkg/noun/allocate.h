@@ -166,15 +166,15 @@
 
     /* u3a_blob: loom-resident metadata for a blob file.
     **
-    **   Stored in ban_u.blb_p HAMT keyed by bid = (mug_h << 32) | seq_w.
+    **   Stored in u3H->blb_p HAMT keyed by bid = (mug_h << 32) | seq_w.
     **   Three independent ref-sources protect the backing file:
     **
     **     log_w  — event-log refs (inc on commit, dec on chop)
     **     les_w  — lease refs (inc on king acquire, dec on release/expiry)
-    **     bob_p  — noun liveness (bob_p[bid] present ↔ live u3a_atom)
+    **     atm_w  — interned bob atom loom offset (0 = no live atom)
     **
-    **   The blob file is deleted when ALL are zero:
-    **     log_w == 0 && les_w == 0 && bob_p[bid] absent
+    **   The blob file is deleted when:
+    **     log_w == 0 && les_w == 0 && atm_w == 0
     */
       typedef struct __attribute__((aligned(4))) {
         c3_w  log_w;   //  event-log refcount
@@ -182,6 +182,7 @@
         c3_h  mug_h;   //  31-bit content mug (= bucket dir name)
         c3_w  seq_w;   //  sequence number within bucket
         c3_d  siz_d;   //  byte size of blob file
+        c3_w  atm_w;   //  loom offset of interned bob atom (0 = none)
       } u3a_blob;
 
 STATIC_ASSERT( (((c3_w)1) << u3a_min_log) == u3a_minimum,

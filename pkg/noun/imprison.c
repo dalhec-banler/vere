@@ -837,60 +837,57 @@ u3i_vmolt(u3_noun som, u3i_molt_pair pairs[], c3_z len_z)
 /* u3i_blob(): construct or intern a bob atom (blob reference).
 **
 **   A bob atom is an indirect atom with the MSB of len_w set.
-**   [mug_h] is the 31-bit mug of the content (stored in mug_h and used
-**   as the blob directory name).
+**   [mug_h] is the 31-bit mug of the content (= blob directory name).
 **   [seq_w] is the sequence number within $pier/.urb/bob/<mug>/.
 **
-**   Interned: at most one bob atom exists per (mug, seq) pair.
-**   bob_p maps bid -> loom offset of the canonical atom.
-**   blb_p maps bid -> loom offset of the u3a_blob refcount struct.
-**   If no u3a_blob exists yet, one is allocated with {log_w=0, les_w=0}.
+**   If a u3a_blob exists in blb_p with a live interned atom (atm_w != 0),
+**   returns the existing atom.  Otherwise allocates a fresh bob atom and
+**   stores its offset in blb_u->atm_w (if a blb_p entry exists).
 */
 u3_atom
 u3i_blob(c3_h mug_h, c3_w seq_w)
 {
-  //  ban_u HAMTs live on the home road — must not be called on inner roads
-  //  (inner-road nodes would be freed when the road pops).
+  //  blb_p lives on the home road
   //
   u3_assert( &(u3H->rod_u) == u3R );
 
-  fprintf(stderr, "u3i_blob: [%x/%u] blb_p=%u wyt=%u\r\n",
-          (unsigned)mug_h, (unsigned)seq_w,
-          (unsigned)u3H->ban_u.blb_p,
-          (unsigned)u3h_wyt(u3H->ban_u.blb_p));
-
+  //  check blb_p for an existing interned atom
+  //
   c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
   u3_noun bid   = u3i_chub(bid_d);
+  u3_weak bv    = u3h_get(u3H->blb_p, bid);
 
-  //  check for an existing interned bob atom
-  //
-  u3_weak got = u3h_get(u3H->ban_u.bob_p, bid);
-  if ( u3_none != got ) {
+  if ( u3_none != bv ) {
     c3_w off_w = 0;
-    u3r_safe_word(got, &off_w);
-    u3z(bid);
-    u3_atom bob = u3a_to_pug(off_w);
-    return u3k(bob);
+    u3r_safe_word(bv, &off_w);
+    u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
+
+    if ( blb_u->atm_w ) {
+      u3z(bid);
+      return u3k(u3a_to_pug(blb_u->atm_w));
+    }
   }
 
-  //  allocate bob atom: u3a_atom header + 1 word for seq_w
+  //  allocate fresh bob atom
   //
   c3_w*     nov_w = u3a_walloc(1 + c3_wiseof(u3a_atom));
   u3a_atom* vat_u = (void *)nov_w;
 
-  vat_u->use_w   = 1;
-  vat_u->mug_h   = mug_h;
-  vat_u->len_w   = 1 | u3a_blob_flag;
+  vat_u->use_w    = 1;
+  vat_u->mug_h    = mug_h;
+  vat_u->len_w    = 1 | u3a_blob_flag;
   vat_u->buf_w[0] = seq_w;
 
   c3_w atm_off_w = u3a_outa(nov_w);
 
-  //  store atom loom offset in bob_p (interning index)
+  //  store in blb_p entry if one exists (created by %blob IPC handler)
   //
-  //  blb_p entries (refcount structs) are created by the %blob IPC handler
-  //  in mars.c, NOT here.  u3i_blob only handles atom interning.
-  //
-  u3h_put(u3H->ban_u.bob_p, bid, u3i_word(atm_off_w));
+  if ( u3_none != bv ) {
+    c3_w off_w = 0;
+    u3r_safe_word(bv, &off_w);
+    u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
+    blb_u->atm_w = atm_off_w;
+  }
 
   u3z(bid);
   return u3a_to_pug(atm_off_w);

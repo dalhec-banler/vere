@@ -1575,11 +1575,8 @@ _disk_chop_delete_cb(u3_noun kev, void* ptr_v)
           (unsigned)blb_u->log_w, (unsigned)blb_u->les_w);
 
   //  delete when no event-log or lease refs remain.
-  //  bob_p (live noun) is NOT checked: the file is the expensive part,
-  //  and any surviving bob atom will gracefully fail on read (u3r_blob_map
-  //  returns NULL for missing files).
   //
-  if ( 0 == blb_u->log_w && 0 == blb_u->les_w ) {
+  if ( 0 == blb_u->log_w && 0 == blb_u->les_w && 0 == blb_u->atm_w ) {
     fprintf(stderr, "chop: DELETING blob mug=%u seq=%u\r\n",
             (unsigned)blb_u->mug_h, (unsigned)blb_u->seq_w);
     u3_blob_delete(del_u->pax_c, blb_u->mug_h, blb_u->seq_w);
@@ -1606,7 +1603,7 @@ _disk_chop_rebuild_log_w(u3_disk* log_u)
 {
   //  step 1: zero all log_w
   //
-  u3h_walk_with(u3H->ban_u.blb_p, _disk_chop_zero_cb, 0);
+  u3h_walk_with(u3H->blb_p, _disk_chop_zero_cb, 0);
 
   //  step 2: scan remaining events for bob atoms
   //
@@ -1633,7 +1630,7 @@ _disk_chop_rebuild_log_w(u3_disk* log_u)
 
         for ( c3_z i = 0; i < acc.len; i++ ) {
           u3_noun bid = u3i_chub(acc.ids[i]);
-          u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bid);
+          u3_weak bv  = u3h_get(u3H->blb_p, bid);
           if ( u3_none != bv ) {
             c3_w off_w = 0;
             u3r_safe_word(bv, &off_w);
@@ -1654,16 +1651,16 @@ _disk_chop_rebuild_log_w(u3_disk* log_u)
   //
   {
     _disk_chop_del del_u = { .pax_c = log_u->dir_u->pax_c };
-    u3h_walk_with(u3H->ban_u.blb_p, _disk_chop_delete_cb, &del_u);
+    u3h_walk_with(u3H->blb_p, _disk_chop_delete_cb, &del_u);
 
     for ( c3_z i_z = 0; i_z < del_u.len_z; i_z++ ) {
       u3_noun bid = u3i_chub(del_u.bid_d[i_z]);
-      u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bid);
+      u3_weak bv  = u3h_get(u3H->blb_p, bid);
       if ( u3_none != bv ) {
         c3_w off_w = 0;
         u3r_safe_word(bv, &off_w);
         u3a_wfree((void*)u3a_into(off_w));
-        u3h_del(u3H->ban_u.blb_p, bid);
+        u3h_del(u3H->blb_p, bid);
       }
       u3z(bid);
     }
@@ -1708,7 +1705,7 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
   //  step 3: delete blobs with all-zero refcounts
   //
   fprintf(stderr, "chop: rebuilding blob log refs (blb_p entries: %u)...\r\n",
-          (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+          (unsigned)u3h_wyt(u3H->blb_p));
   _disk_chop_rebuild_log_w(log_u);
 
   fprintf(stderr, "chop: event log truncation complete\r\n");

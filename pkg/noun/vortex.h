@@ -18,53 +18,19 @@
         u3_noun yot;                      //  cached gates
       } u3v_arvo;
 
-    /* u3v_lease: PQ entry for lease TTL expiry.
-    **
-    **   Tracks a single les_w increment for a blob.  If the king
-    **   releases the lease (via %blob-release IPC) before expiry,
-    **   dead_o is set to c3y and the PQ sweeper skips the decrement.
-    **   If the king crashes, the TTL fires and les_w is decremented.
-    */
-      typedef struct _u3v_lease {
-        c3_d  exp_d;        //  expiry time (Unix ms)
-        c3_h  mug_h;        //  blob mug
-        c3_w  seq_w;        //  blob seq within mug bucket
-        c3_o  dead_o;       //  c3y if lease already released
-      } u3v_lease;
-
-    /* u3v_bank: loom-resident blob bank.
-    **
-    **   Lives in u3v_home, checkpointed in image.bin.
-    **
-    **   blb_p: HAMT  bid -> u3a_blob* (loom offset of refcount struct)
-    **   bob_p: HAMT  bid -> u3a_atom* (loom offset of interned bob atom)
-    **
-    **   A blob file is deleted when ALL of:
-    **     u3a_blob.log_w == 0  (no event-log refs)
-    **     u3a_blob.les_w == 0  (no active leases)
-    **     bob_p[bid] absent    (no live bob atom in the loom)
-    */
-      typedef struct _u3v_bank {
-        u3p(u3h_root) blb_p;  //  bid -> u3a_blob* (loom offset)
-        u3p(u3h_root) bob_p;  //  bid -> u3a_atom* (loom offset, interning)
-      } u3v_bank;
-
     /* u3v_home: all internal (within image) state.
-    **       NB: version must first for ease of migration.
+    **       NB: version must be first for ease of migration.
     **
-    **   ban_u is placed BEFORE rod_u to avoid a memory clobber:
-    **   rod_u.cax (last field of u3a_road) was immediately adjacent,
-    **   and inner-road initialization was overwriting ban_u.  Placing
-    **   ban_u before rod_u puts it at a stable offset (after pam_d,
-    **   before the large road struct).  lazy-init in _find_home
-    **   handles zero values from pre-blob snapshots.
+    **   blb_p is the blob bank HAMT (bid -> u3a_blob*), checkpointed
+    **   in image.bin.  A blob file is deleted when:
+    **     log_w == 0 && les_w == 0 && atm_w == 0
     */
       typedef struct _u3v_home {
-        u3v_version ver_d;                //  version number
-        c3_d        pam_d;                //  parameters
-        u3v_arvo    arv_u;                //  arvo state
-        u3v_bank    ban_u;                //  blob bank
-        u3a_road    rod_u;                //  storage state
+        u3v_version   ver_d;              //  version number
+        c3_d          pam_d;              //  parameters
+        u3v_arvo      arv_u;              //  arvo state
+        u3p(u3h_root) blb_p;              //  blob bank: bid -> u3a_blob*
+        u3a_road      rod_u;              //  storage state
       } u3v_home;
 
 

@@ -565,8 +565,7 @@ _pave_home(void)
 
   //  initialize blob bank HAMTs (home road only)
   //
-  u3H->ban_u.blb_p = u3h_new();
-  u3H->ban_u.bob_p = u3h_new();
+  u3H->blb_p = u3h_new();
 }
 
 STATIC_ASSERT( (c3_wiseof(u3v_home) <= (((c3_w)1) << u3a_page)),
@@ -685,18 +684,16 @@ _find_home(void)
   //
   //  lazy-init blob bank HAMTs (zero if snapshot predates blob store)
   //
-  if ( !u3H->ban_u.blb_p ) {
-    u3H->ban_u.blb_p = u3h_new();
+  if ( !u3H->blb_p ) {
+    u3H->blb_p = u3h_new();
   }
-  if ( !u3H->ban_u.bob_p ) {
-    u3H->ban_u.bob_p = u3h_new();
-  }
+
 
   //  reset all les_w to 0: leases are transient IPC state backed by a
   //  C-heap PQ that is not persisted.  after restart the PQ is empty,
   //  so the entries that would decrement les_w are gone.
   //
-  u3h_walk_with(u3H->ban_u.blb_p, _find_home_zero_les, 0);
+  u3h_walk_with(u3H->blb_p, _find_home_zero_les, 0);
   if ( !u3R->lop_p )     u3R->lop_p = u3h_new();
   if ( !u3R->cax.for_p ) u3R->cax.for_p = u3h_new_cache(u3C.per_w);
 }
@@ -1063,12 +1060,12 @@ void
 u3m_leap(c3_w pad_w)
 {
   u3_road* rod_u;
-  u3p(u3h_root) _lc = u3H->ban_u.blb_p;
+  u3p(u3h_root) _lc = u3H->blb_p;
 #define _LEAP_CHK(tag) do { \
-  if ( _lc != u3H->ban_u.blb_p ) { \
+  if ( _lc != u3H->blb_p ) { \
     fprintf(stderr, "!!! LEAP CLOBBER at %s: was %lu now %lu\r\n", \
-            (tag), (unsigned long)_lc, (unsigned long)u3H->ban_u.blb_p); \
-    _lc = u3H->ban_u.blb_p; \
+            (tag), (unsigned long)_lc, (unsigned long)u3H->blb_p); \
+    _lc = u3H->blb_p; \
   } \
 } while(0)
 
@@ -1402,12 +1399,12 @@ u3m_timer_pop(void)
 u3_noun
 u3m_love(u3_noun pro)
 {
-  u3p(u3h_root) _chk = u3H->ban_u.blb_p;
+  u3p(u3h_root) _chk = u3H->blb_p;
 #define _LOVE_CHK(tag) do { \
-  if ( _chk != u3H->ban_u.blb_p ) { \
+  if ( _chk != u3H->blb_p ) { \
     fprintf(stderr, "!!! LOVE CLOBBER at %s: was %lu now %lu\r\n", \
-            (tag), (unsigned long)_chk, (unsigned long)u3H->ban_u.blb_p); \
-    _chk = u3H->ban_u.blb_p; \
+            (tag), (unsigned long)_chk, (unsigned long)u3H->blb_p); \
+    _chk = u3H->blb_p; \
   } \
 } while(0)
 
@@ -1573,11 +1570,11 @@ u3m_soft_top(c3_w    mil_w,                     //  timer ms
   /* Record the cap, and leap.
   */
   {
-    u3p(u3h_root) _s = u3H->ban_u.blb_p;
+    u3p(u3h_root) _s = u3H->blb_p;
     u3m_hate(pad_w);
-    if ( _s != u3H->ban_u.blb_p ) {
+    if ( _s != u3H->blb_p ) {
       fprintf(stderr, "!!! HATE CLOBBERED blb_p: was %lu now %lu\r\n",
-              (unsigned long)_s, (unsigned long)u3H->ban_u.blb_p);
+              (unsigned long)_s, (unsigned long)u3H->blb_p);
     }
   }
 
@@ -1593,11 +1590,11 @@ u3m_soft_top(c3_w    mil_w,                     //  timer ms
   if ( 0 == _setjmp(u3R->esc.buf) ) {
 #endif
     {
-      u3p(u3h_root) _s = u3H->ban_u.blb_p;
+      u3p(u3h_root) _s = u3H->blb_p;
       pro = fun_f(arg);
-      if ( _s != u3H->ban_u.blb_p ) {
+      if ( _s != u3H->blb_p ) {
         fprintf(stderr, "!!! NOCK CLOBBERED blb_p: was %lu now %lu\r\n",
-                (unsigned long)_s, (unsigned long)u3H->ban_u.blb_p);
+                (unsigned long)_s, (unsigned long)u3H->blb_p);
       }
     }
 

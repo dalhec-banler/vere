@@ -16,6 +16,20 @@
 #include <stdio.h>
 #include <sys/time.h>
 
+/* u3v_lease: PQ entry for lease TTL expiry.
+**
+**   Tracks a single les_w increment for a blob.  If the king
+**   releases the lease (via %blob-release IPC) before expiry,
+**   dead_o is set to c3y and the PQ sweeper skips the decrement.
+**   If the king crashes, the TTL fires and les_w is decremented.
+*/
+typedef struct _u3v_lease {
+  c3_d  exp_d;        //  expiry time (Unix ms)
+  c3_h  mug_h;        //  blob mug
+  c3_w  seq_w;        //  blob seq within mug bucket
+  c3_o  dead_o;       //  c3y if lease already released
+} u3v_lease;
+
 c3_c tac_c[256];  //  tracing label
 
 /* _mars_lease_pq: min-heap of u3v_lease*, keyed by lea_u->exp_d.
@@ -102,7 +116,7 @@ _mars_blob_del(c3_h mug_h, c3_w seq_w)
 {
   fprintf(stderr, "_mars_blob_del: mug=%u seq=%u (blb_p was %u entries)\r\n",
           (unsigned)mug_h, (unsigned)seq_w,
-          (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+          (unsigned)u3h_wyt(u3H->blb_p));
 
   u3_blob_delete(u3C.dir_c, mug_h, seq_w);
 
@@ -110,7 +124,7 @@ _mars_blob_del(c3_h mug_h, c3_w seq_w)
   //
   c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
   u3_noun bid   = u3i_chub(bid_d);
-  u3_weak bv    = u3h_get(u3H->ban_u.blb_p, bid);
+  u3_weak bv    = u3h_get(u3H->blb_p, bid);
   if ( u3_none != bv ) {
     c3_w off_w = 0;
     u3r_safe_word(bv, &off_w);
@@ -118,7 +132,7 @@ _mars_blob_del(c3_h mug_h, c3_w seq_w)
     fprintf(stderr, "_mars_blob_del: removing blb_p entry (log_w=%u les_w=%u)\r\n",
             (unsigned)blb_u->log_w, (unsigned)blb_u->les_w);
     u3a_wfree(blb_u);
-    u3h_del(u3H->ban_u.blb_p, bid);
+    u3h_del(u3H->blb_p, bid);
   }
   u3z(bid);
 }
@@ -130,7 +144,7 @@ _blob_lookup(c3_h mug_h, c3_w seq_w)
 {
   c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
   u3_noun bid   = u3i_chub(bid_d);
-  u3_weak bv    = u3h_get(u3H->ban_u.blb_p, bid);
+  u3_weak bv    = u3h_get(u3H->blb_p, bid);
   u3z(bid);
 
   if ( u3_none == bv ) return 0;
@@ -140,7 +154,9 @@ _blob_lookup(c3_h mug_h, c3_w seq_w)
   return (u3a_blob*)u3a_into(off_w);
 }
 
-/* _blob_maybe_delete(): delete blob iff log and lease refs are zero.
+/* _blob_maybe_delete(): delete blob iff all refs are zero.
+**
+**   Deletion condition: log_w == 0 && les_w == 0 && atm_w == 0
 */
 static void
 _blob_maybe_delete(c3_h mug_h, c3_w seq_w)
@@ -148,7 +164,7 @@ _blob_maybe_delete(c3_h mug_h, c3_w seq_w)
   u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
   if ( !blb_u ) return;
 
-  if ( 0 != blb_u->log_w || 0 != blb_u->les_w ) return;
+  if ( 0 != blb_u->log_w || 0 != blb_u->les_w || 0 != blb_u->atm_w ) return;
 
   _mars_blob_del(mug_h, seq_w);
 }
@@ -422,12 +438,12 @@ _mars_fact(u3_mars* mar_u,
         fprintf(stderr, "fact: log_w++ [%x/%u] log=%u les=%u (wyt=%u)\r\n",
                 (unsigned)mug_h, (unsigned)seq_w,
                 (unsigned)blb_u->log_w, (unsigned)blb_u->les_w,
-                (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+                (unsigned)u3h_wyt(u3H->blb_p));
       }
       else {
         fprintf(stderr, "fact: blob NOT FOUND [%x/%u] (wyt=%u)\r\n",
                 (unsigned)mug_h, (unsigned)seq_w,
-                (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+                (unsigned)u3h_wyt(u3H->blb_p));
       }
 
       //  TODO: write blob-ref log-inc event to LMDB (tag 0x02, op 0x03)
@@ -853,12 +869,12 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
       mar_u->sen_d++;
 
       {
-        u3p(u3h_root) _pre = u3H->ban_u.blb_p;
+        u3p(u3h_root) _pre = u3H->blb_p;
 
         if ( c3y == _mars_poke(mil_h, &job, &pro) ) {
-          if ( _pre != u3H->ban_u.blb_p ) {
+          if ( _pre != u3H->blb_p ) {
             fprintf(stderr, "!!! POKE CLOBBERED blb_p: was %lu now %lu\r\n",
-                    (unsigned long)_pre, (unsigned long)u3H->ban_u.blb_p);
+                    (unsigned long)_pre, (unsigned long)u3H->blb_p);
           }
 
           mar_u->dun_d = mar_u->sen_d;
@@ -1012,11 +1028,12 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
               blb_u->mug_h  = mug_h;
               blb_u->seq_w  = seq_w;
               blb_u->siz_d  = 0;
-              u3h_put(u3H->ban_u.blb_p, bid, u3i_word(u3a_outa(blb_w)));
+              blb_u->atm_w  = 0;
+              u3h_put(u3H->blb_p, bid, u3i_word(u3a_outa(blb_w)));
               u3z(bid);
               fprintf(stderr, "blob: install blb_p[%x/%u] new (wyt=%u)\r\n",
                       (unsigned)mug_h, (unsigned)seq_w,
-                      (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+                      (unsigned)u3h_wyt(u3H->blb_p));
             }
             blb_u->les_w++;
           }
@@ -1265,9 +1282,8 @@ top:
       goto top;
     }
     else if ( u3_mars_exit_e == mar_u->sat_e ) {
-      fprintf(stderr, "mars: saving (blb_p entries: %u, bob_p entries: %u)\r\n",
-              (unsigned)u3h_wyt(u3H->ban_u.blb_p),
-              (unsigned)u3h_wyt(u3H->ban_u.bob_p));
+      fprintf(stderr, "mars: saving (blb_p entries: %u)\r\n",
+              (unsigned)u3h_wyt(u3H->blb_p));
       u3m_save();
       u3_disk_exit(mar_u->log_u);
       u3s_cue_xeno_done(mar_u->sil_u);
@@ -1311,12 +1327,12 @@ u3_mars_kick(void* ram_u, c3_y ver_y, c3_d len_d, c3_y* hun_y)
   //
   {
     static u3p(u3h_root) _blb_watch = 0;
-    if ( _blb_watch && _blb_watch != u3H->ban_u.blb_p ) {
+    if ( _blb_watch && _blb_watch != u3H->blb_p ) {
       fprintf(stderr, "!!! BLB_P CLOBBER: was %lu now %lu (wyt=%u)\r\n",
-              (unsigned long)_blb_watch, (unsigned long)u3H->ban_u.blb_p,
-              (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+              (unsigned long)_blb_watch, (unsigned long)u3H->blb_p,
+              (unsigned)u3h_wyt(u3H->blb_p));
     }
-    _blb_watch = u3H->ban_u.blb_p;
+    _blb_watch = u3H->blb_p;
   }
 
   _mars_step_trace(mar_u->dir_c);
@@ -1347,11 +1363,11 @@ u3_mars_kick(void* ram_u, c3_y ver_y, c3_d len_d, c3_y* hun_y)
     //
     {
       static u3p(u3h_root) _blb_post = 0;
-      if ( _blb_post && _blb_post != u3H->ban_u.blb_p ) {
+      if ( _blb_post && _blb_post != u3H->blb_p ) {
         fprintf(stderr, "!!! BLB_P CHANGED IN POST: was %lu now %lu\r\n",
-                (unsigned long)_blb_post, (unsigned long)u3H->ban_u.blb_p);
+                (unsigned long)_blb_post, (unsigned long)u3H->blb_p);
       }
-      _blb_post = u3H->ban_u.blb_p;
+      _blb_post = u3H->blb_p;
     }
 
     ret_o = c3y;
