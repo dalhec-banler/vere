@@ -1060,17 +1060,8 @@ void
 u3m_leap(c3_w pad_w)
 {
   u3_road* rod_u;
-  u3p(u3h_root) _lc = u3H->blb_p;
-#define _LEAP_CHK(tag) do { \
-  if ( _lc != u3H->blb_p ) { \
-    fprintf(stderr, "!!! LEAP CLOBBER at %s: was %lu now %lu\r\n", \
-            (tag), (unsigned long)_lc, (unsigned long)u3H->blb_p); \
-    _lc = u3H->blb_p; \
-  } \
-} while(0)
 
   _rod_vaal(u3R);
-  _LEAP_CHK("post-vaal");
 
   //  push a new road struct onto the stack
   //
@@ -1078,9 +1069,7 @@ u3m_leap(c3_w pad_w)
     u3a_pile pil_u;
     c3_p     ptr_p;
     u3a_pile_prep(&pil_u, sizeof(u3a_road) + 15); // XX refactor to wiseof
-    _LEAP_CHK("post-pile-prep");
     ptr_p = (c3_p)u3a_push(&pil_u);
-    _LEAP_CHK("post-push");
 
     //  XX add push_once, push_once_aligned
     //
@@ -1093,7 +1082,6 @@ u3m_leap(c3_w pad_w)
 
     rod_u = (void*)ptr_p;
     memset(rod_u, 0, sizeof(u3a_road));
-    _LEAP_CHK("post-memset");
   }
 
   /* Allocate a region on the cap.
@@ -1115,10 +1103,8 @@ u3m_leap(c3_w pad_w)
       }
 
       u3e_ward(bot_p - 1, top_p);
-      _LEAP_CHK("post-ward-N");
       rod_u->mat_p = rod_u->cap_p = bot_p;
       rod_u->rut_p = rod_u->hat_p = top_p;
-      _LEAP_CHK("post-rod-init-N");
 
       //  in a south road, the heap is high and the stack is low
       //
@@ -1151,10 +1137,8 @@ u3m_leap(c3_w pad_w)
       }
 
       u3e_ward(bot_p - 1, top_p);
-      _LEAP_CHK("post-ward-S");
       rod_u->rut_p = rod_u->hat_p = bot_p;
       rod_u->mat_p = rod_u->cap_p = top_p;
-      _LEAP_CHK("post-rod-init-S");
 
       //  in a north road, the heap is low and the stack is high
       //
@@ -1185,22 +1169,18 @@ u3m_leap(c3_w pad_w)
     rod_u->par_p = u3of(u3_road, u3R);
     u3R->kid_p = u3of(u3_road, rod_u);
   }
-  _LEAP_CHK("post-attach");
 
   // Stash slow stack pointer
   if ( NULL != u3t_Spin ) {
     u3R->off_w = u3t_Spin->off_w;
     u3R->fow_w = u3t_Spin->fow_w;
   }
-  _LEAP_CHK("post-spin");
 
   /* Set up the new road.
   */
   {
     u3R = rod_u;
-    _LEAP_CHK("post-switch");
     _pave_parts();
-    _LEAP_CHK("post-pave");
   }
 #ifdef U3_MEMORY_DEBUG
   rod_u->all.fre_w = 0;
@@ -1399,15 +1379,6 @@ u3m_timer_pop(void)
 u3_noun
 u3m_love(u3_noun pro)
 {
-  u3p(u3h_root) _chk = u3H->blb_p;
-#define _LOVE_CHK(tag) do { \
-  if ( _chk != u3H->blb_p ) { \
-    fprintf(stderr, "!!! LOVE CLOBBER at %s: was %lu now %lu\r\n", \
-            (tag), (unsigned long)_chk, (unsigned long)u3H->blb_p); \
-    _chk = u3H->blb_p; \
-  } \
-} while(0)
-
   //  save cache pointers from current road
   //
   u3p(u3h_root) byc_p = u3R->byc.har_p;
@@ -1421,9 +1392,7 @@ u3m_love(u3_noun pro)
 
   //  fallback to parent road (child heap on parent's stack)
   //
-  _LOVE_CHK("pre-fall");
   u3m_fall();
-  _LOVE_CHK("post-fall");
 
   if ( _(tim_o) ) _m_renew_now();
 
@@ -1435,37 +1404,25 @@ u3m_love(u3_noun pro)
 
   //  copy product and caches off our stack
   //
-  _LOVE_CHK("pre-take");
   pro   = u3a_take(pro);
-  _LOVE_CHK("post-take-pro");
   jed_u = u3j_take(jed_u);
-  _LOVE_CHK("post-take-jed");
   byc_p = u3n_take(byc_p);
-  _LOVE_CHK("post-take-byc");
   per_p = u3h_take(per_p);
-  _LOVE_CHK("post-take-per");
   for_p = u3h_take(for_p);
-  _LOVE_CHK("post-take-for");
 
   //  pop the stack
   //
   u3a_drop_heap(u3R->cap_p, u3R->ear_p);
-  _LOVE_CHK("post-drop");
   u3R->cap_p = u3R->ear_p;
   u3R->ear_p = 0;
 
   //  integrate junior caches
   //
   u3j_reap(jed_u);
-  _LOVE_CHK("post-reap-jed");
   u3n_reap(byc_p);
-  _LOVE_CHK("post-reap-byc");
   u3z_reap(u3z_memo_keep, per_p);
-  _LOVE_CHK("post-reap-per");
   u3z_reap(u3z_memo_ford, for_p);
-  _LOVE_CHK("post-reap-for");
 
-#undef _LOVE_CHK
   return pro;
 }
 
@@ -1569,14 +1526,7 @@ u3m_soft_top(c3_w    mil_w,                     //  timer ms
 
   /* Record the cap, and leap.
   */
-  {
-    u3p(u3h_root) _s = u3H->blb_p;
-    u3m_hate(pad_w);
-    if ( _s != u3H->blb_p ) {
-      fprintf(stderr, "!!! HATE CLOBBERED blb_p: was %lu now %lu\r\n",
-              (unsigned long)_s, (unsigned long)u3H->blb_p);
-    }
-  }
+  u3m_hate(pad_w);
 
   if ( mil_w ) {
     u3m_timer_set(u3m_time_gap_in_mil(mil_w));
@@ -1589,14 +1539,7 @@ u3m_soft_top(c3_w    mil_w,                     //  timer ms
 #else
   if ( 0 == _setjmp(u3R->esc.buf) ) {
 #endif
-    {
-      u3p(u3h_root) _s = u3H->blb_p;
-      pro = fun_f(arg);
-      if ( _s != u3H->blb_p ) {
-        fprintf(stderr, "!!! NOCK CLOBBERED blb_p: was %lu now %lu\r\n",
-                (unsigned long)_s, (unsigned long)u3H->blb_p);
-      }
-    }
+    pro = fun_f(arg);
 
     /* Make sure the inner routine did not create garbage.
     */

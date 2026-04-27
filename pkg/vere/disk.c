@@ -1533,17 +1533,18 @@ _disk_vere_diff(u3_disk* log_u)
 
 /* _disk_chop_zero_cb(): u3h_walk_with callback — zero log_w and les_w.
 **
-**   les_w is zeroed because leases are transient IPC state: the lease PQ
-**   lives in C heap (not persisted), so after a restart/chop the lease
-**   entries that would decrement les_w are gone.
+**   log_w: will be rebuilt by rescanning remaining events.
+**   les_w: transient IPC state (lease PQ is C-heap, lost on restart).
+**   atm_w: NOT zeroed — if a live atom exists, the blob file is kept.
+**          it will be deleted during live operation when the atom dies
+**          (_me_bob_dead sets atm_w=0, then _blob_maybe_delete fires).
 */
 static void
 _disk_chop_zero_cb(u3_noun kev, void* ptr_v)
 {
   (void)ptr_v;
-  u3_noun val = u3t(kev);
   c3_w off_w = 0;
-  u3r_safe_word(val, &off_w);
+  u3r_safe_word(u3t(kev), &off_w);
   u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
   blb_u->log_w = 0;
   blb_u->les_w = 0;
@@ -1570,15 +1571,7 @@ _disk_chop_delete_cb(u3_noun kev, void* ptr_v)
   u3r_safe_word(val, &off_w);
   u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
 
-  fprintf(stderr, "chop: blob mug=%u seq=%u log_w=%u les_w=%u\r\n",
-          (unsigned)blb_u->mug_h, (unsigned)blb_u->seq_w,
-          (unsigned)blb_u->log_w, (unsigned)blb_u->les_w);
-
-  //  delete when no event-log or lease refs remain.
-  //
   if ( 0 == blb_u->log_w && 0 == blb_u->les_w && 0 == blb_u->atm_w ) {
-    fprintf(stderr, "chop: DELETING blob mug=%u seq=%u\r\n",
-            (unsigned)blb_u->mug_h, (unsigned)blb_u->seq_w);
     u3_blob_delete(del_u->pax_c, blb_u->mug_h, blb_u->seq_w);
 
     //  collect bid for post-walk blb_p cleanup
@@ -1704,8 +1697,6 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
   //  step 2: scan remaining LMDB events for bob atoms, rebuild log_w
   //  step 3: delete blobs with all-zero refcounts
   //
-  fprintf(stderr, "chop: rebuilding blob log refs (blb_p entries: %u)...\r\n",
-          (unsigned)u3h_wyt(u3H->blb_p));
   _disk_chop_rebuild_log_w(log_u);
 
   fprintf(stderr, "chop: event log truncation complete\r\n");
