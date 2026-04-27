@@ -849,6 +849,16 @@ u3i_vmolt(u3_noun som, u3i_molt_pair pairs[], c3_z len_z)
 u3_atom
 u3i_blob(c3_h mug_h, c3_w seq_w)
 {
+  //  ban_u HAMTs live on the home road — must not be called on inner roads
+  //  (inner-road nodes would be freed when the road pops).
+  //
+  u3_assert( &(u3H->rod_u) == u3R );
+
+  fprintf(stderr, "u3i_blob: [%x/%u] blb_p=%u wyt=%u\r\n",
+          (unsigned)mug_h, (unsigned)seq_w,
+          (unsigned)u3H->ban_u.blb_p,
+          (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+
   c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
   u3_noun bid   = u3i_chub(bid_d);
 
@@ -873,28 +883,14 @@ u3i_blob(c3_h mug_h, c3_w seq_w)
   vat_u->len_w   = 1 | u3a_blob_flag;
   vat_u->buf_w[0] = seq_w;
 
+  c3_w atm_off_w = u3a_outa(nov_w);
+
   //  store atom loom offset in bob_p (interning index)
   //
-  c3_w atm_off_w = u3a_outa(nov_w);
-  u3h_put(u3H->ban_u.bob_p, bid, u3i_word(atm_off_w));
-
-  //  ensure u3a_blob exists in blb_p
+  //  blb_p entries (refcount structs) are created by the %blob IPC handler
+  //  in mars.c, NOT here.  u3i_blob only handles atom interning.
   //
-  u3_weak bv = u3h_get(u3H->ban_u.blb_p, bid);
-  if ( u3_none == bv ) {
-    //  allocate fresh u3a_blob with zero refcounts
-    //
-    c3_w*     blb_w = u3a_walloc(c3_wiseof(u3a_blob));
-    u3a_blob* blb_u = (u3a_blob*)blb_w;
-    blb_u->log_w = 0;
-    blb_u->les_w = 0;
-    blb_u->mug_h = mug_h;
-    blb_u->seq_w = seq_w;
-    blb_u->siz_d = 0;  //  filled later by blob_save / blob_install
-
-    c3_w blb_off_w = u3a_outa(blb_w);
-    u3h_put(u3H->ban_u.blb_p, bid, u3i_word(blb_off_w));
-  }
+  u3h_put(u3H->ban_u.bob_p, bid, u3i_word(atm_off_w));
 
   u3z(bid);
   return u3a_to_pug(atm_off_w);

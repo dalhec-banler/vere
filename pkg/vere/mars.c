@@ -100,6 +100,10 @@ _mars_pq_pop(_mars_lease_pq* pq_u)
 static void
 _mars_blob_del(c3_h mug_h, c3_w seq_w)
 {
+  fprintf(stderr, "_mars_blob_del: mug=%u seq=%u (blb_p was %u entries)\r\n",
+          (unsigned)mug_h, (unsigned)seq_w,
+          (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+
   u3_blob_delete(u3C.dir_c, mug_h, seq_w);
 
   //  free the u3a_blob struct and remove from blb_p
@@ -110,7 +114,10 @@ _mars_blob_del(c3_h mug_h, c3_w seq_w)
   if ( u3_none != bv ) {
     c3_w off_w = 0;
     u3r_safe_word(bv, &off_w);
-    u3a_wfree((u3a_blob*)u3a_into(off_w));
+    u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
+    fprintf(stderr, "_mars_blob_del: removing blb_p entry (log_w=%u les_w=%u)\r\n",
+            (unsigned)blb_u->log_w, (unsigned)blb_u->les_w);
+    u3a_wfree(blb_u);
     u3h_del(u3H->ban_u.blb_p, bid);
   }
   u3z(bid);
@@ -133,9 +140,7 @@ _blob_lookup(c3_h mug_h, c3_w seq_w)
   return (u3a_blob*)u3a_into(off_w);
 }
 
-/* _blob_maybe_delete(): delete blob iff ALL refcounts are zero.
-**
-**   Checks: u3a_blob.log_w, u3a_blob.les_w, bob_p[bid] presence.
+/* _blob_maybe_delete(): delete blob iff log and lease refs are zero.
 */
 static void
 _blob_maybe_delete(c3_h mug_h, c3_w seq_w)
@@ -144,13 +149,6 @@ _blob_maybe_delete(c3_h mug_h, c3_w seq_w)
   if ( !blb_u ) return;
 
   if ( 0 != blb_u->log_w || 0 != blb_u->les_w ) return;
-
-  c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-  u3_noun bid   = u3i_chub(bid_d);
-  c3_o has_bob  = __(u3_none != u3h_get(u3H->ban_u.bob_p, bid));
-  u3z(bid);
-
-  if ( c3y == has_bob ) return;
 
   _mars_blob_del(mug_h, seq_w);
 }
@@ -421,6 +419,15 @@ _mars_fact(u3_mars* mar_u,
       u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
       if ( blb_u ) {
         blb_u->log_w++;
+        fprintf(stderr, "fact: log_w++ [%x/%u] log=%u les=%u (wyt=%u)\r\n",
+                (unsigned)mug_h, (unsigned)seq_w,
+                (unsigned)blb_u->log_w, (unsigned)blb_u->les_w,
+                (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+      }
+      else {
+        fprintf(stderr, "fact: blob NOT FOUND [%x/%u] (wyt=%u)\r\n",
+                (unsigned)mug_h, (unsigned)seq_w,
+                (unsigned)u3h_wyt(u3H->ban_u.blb_p));
       }
 
       //  TODO: write blob-ref log-inc event to LMDB (tag 0x02, op 0x03)
@@ -845,19 +852,28 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
       pre_w = u3a_open(u3R);
       mar_u->sen_d++;
 
-      if ( c3y == _mars_poke(mil_h, &job, &pro) ) {
-        mar_u->dun_d = mar_u->sen_d;
-        mar_u->mug_h = u3r_mug(u3A->roc);
-        mar_u->fag_w |= _mars_fag_mute;
+      {
+        u3p(u3h_root) _pre = u3H->ban_u.blb_p;
 
-        pro = _mars_sure_feck(mar_u, pre_w, pro);
+        if ( c3y == _mars_poke(mil_h, &job, &pro) ) {
+          if ( _pre != u3H->ban_u.blb_p ) {
+            fprintf(stderr, "!!! POKE CLOBBERED blb_p: was %lu now %lu\r\n",
+                    (unsigned long)_pre, (unsigned long)u3H->ban_u.blb_p);
+          }
 
-        _mars_fact(mar_u, job, u3nt(c3__poke, c3y, pro));
-      }
-      else {
-        mar_u->sen_d = mar_u->dun_d;
-        u3z(job);
-        _mars_gift(mar_u, u3nt(c3__poke, c3n, pro));
+          mar_u->dun_d = mar_u->sen_d;
+          mar_u->mug_h = u3r_mug(u3A->roc);
+          mar_u->fag_w |= _mars_fag_mute;
+
+          pro = _mars_sure_feck(mar_u, pre_w, pro);
+
+          _mars_fact(mar_u, job, u3nt(c3__poke, c3y, pro));
+        }
+        else {
+          mar_u->sen_d = mar_u->dun_d;
+          u3z(job);
+          _mars_gift(mar_u, u3nt(c3__poke, c3n, pro));
+        }
       }
 
       u3_assert( mar_u->dun_d == u3A->eve_d );
@@ -998,6 +1014,9 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
               blb_u->siz_d  = 0;
               u3h_put(u3H->ban_u.blb_p, bid, u3i_word(u3a_outa(blb_w)));
               u3z(bid);
+              fprintf(stderr, "blob: install blb_p[%x/%u] new (wyt=%u)\r\n",
+                      (unsigned)mug_h, (unsigned)seq_w,
+                      (unsigned)u3h_wyt(u3H->ban_u.blb_p));
             }
             blb_u->les_w++;
           }
@@ -1018,6 +1037,10 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
           }
 
           //  TODO: write blob-ref lease-issue event to LMDB (tag 0x02, op 0x01)
+
+          //  save blob bank to snapshot so entries survive crash
+          //
+          mar_u->fag_w |= _mars_fag_mute;
         }
       }
       else {
@@ -1242,6 +1265,9 @@ top:
       goto top;
     }
     else if ( u3_mars_exit_e == mar_u->sat_e ) {
+      fprintf(stderr, "mars: saving (blb_p entries: %u, bob_p entries: %u)\r\n",
+              (unsigned)u3h_wyt(u3H->ban_u.blb_p),
+              (unsigned)u3h_wyt(u3H->ban_u.bob_p));
       u3m_save();
       u3_disk_exit(mar_u->log_u);
       u3s_cue_xeno_done(mar_u->sil_u);
@@ -1281,6 +1307,18 @@ u3_mars_kick(void* ram_u, c3_y ver_y, c3_d len_d, c3_y* hun_y)
   u3_mars* mar_u = ram_u;
   c3_o ret_o = c3n;
 
+  //  watchdog: detect blb_p clobber
+  //
+  {
+    static u3p(u3h_root) _blb_watch = 0;
+    if ( _blb_watch && _blb_watch != u3H->ban_u.blb_p ) {
+      fprintf(stderr, "!!! BLB_P CLOBBER: was %lu now %lu (wyt=%u)\r\n",
+              (unsigned long)_blb_watch, (unsigned long)u3H->ban_u.blb_p,
+              (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+    }
+    _blb_watch = u3H->ban_u.blb_p;
+  }
+
   _mars_step_trace(mar_u->dir_c);
 
   //  XX optimize for stateless tasks w/ peek-next
@@ -1304,6 +1342,17 @@ u3_mars_kick(void* ram_u, c3_y ver_y, c3_d len_d, c3_y* hun_y)
     }
 
     _mars_post(mar_u);
+
+    //  update watchdog after post
+    //
+    {
+      static u3p(u3h_root) _blb_post = 0;
+      if ( _blb_post && _blb_post != u3H->ban_u.blb_p ) {
+        fprintf(stderr, "!!! BLB_P CHANGED IN POST: was %lu now %lu\r\n",
+                (unsigned long)_blb_post, (unsigned long)u3H->ban_u.blb_p);
+      }
+      _blb_post = u3H->ban_u.blb_p;
+    }
 
     ret_o = c3y;
   }

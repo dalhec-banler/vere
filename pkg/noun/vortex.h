@@ -52,18 +52,19 @@
     /* u3v_home: all internal (within image) state.
     **       NB: version must first for ease of migration.
     **
-    **   ban_u sits at the end so pre-blob-storage V5 snapshots still
-    **   load cleanly: old binaries never wrote past their (smaller)
-    **   sizeof(u3v_home), so the bytes at ban_u's new position are
-    **   reliably zero (MAP_ANON origin, persisted in saved pages).
-    **   _find_home's lazy-init turns those zeros into empty HAMTs.
+    **   ban_u is placed BEFORE rod_u to avoid a memory clobber:
+    **   rod_u.cax (last field of u3a_road) was immediately adjacent,
+    **   and inner-road initialization was overwriting ban_u.  Placing
+    **   ban_u before rod_u puts it at a stable offset (after pam_d,
+    **   before the large road struct).  lazy-init in _find_home
+    **   handles zero values from pre-blob snapshots.
     */
       typedef struct _u3v_home {
         u3v_version ver_d;                //  version number
         c3_d        pam_d;                //  parameters
         u3v_arvo    arv_u;                //  arvo state
+        u3v_bank    ban_u;                //  blob bank
         u3a_road    rod_u;                //  storage state
-        u3v_bank    ban_u;                //  blob bank (NB: must stay last)
       } u3v_home;
 
 

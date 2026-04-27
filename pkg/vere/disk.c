@@ -1220,6 +1220,30 @@ fail1:
   return c3n;
 }
 
+/* _disk_chop_bob_atom(): u3a_walk_fore atom callback — collect bob bids.
+*/
+static void
+_disk_chop_bob_atom(u3_atom a, void* ptr_v)
+{
+  if ( c3y != u3a_is_bob(a) ) return;
+  struct { c3_d* ids; c3_z len; c3_z cap; } *acc = ptr_v;
+  if ( acc->len == acc->cap ) {
+    acc->cap = acc->cap ? acc->cap * 2 : 8;
+    acc->ids = c3_realloc(acc->ids, acc->cap * sizeof(c3_d));
+  }
+  acc->ids[acc->len++] =
+    ((c3_d)u3a_bob_mug(a) << 32) | (c3_d)u3a_bob_seq(a);
+}
+
+/* _disk_chop_bob_cell(): u3a_walk_fore cell callback — always descend.
+*/
+static c3_o
+_disk_chop_bob_cell(u3_noun n, void* ptr_v)
+{
+  (void)n; (void)ptr_v;
+  return c3y;
+}
+
 /* _disk_epoc_kill: delete an epoch.
 */
 static c3_o
@@ -1229,10 +1253,7 @@ _disk_epoc_kill(u3_disk* log_u, c3_d epo_d)
   c3_c epo_c[8193];
   snprintf(epo_c, sizeof(epo_c), "%s/0i%" PRIc3_d, log_u->com_u->pax_c, epo_d);
 
-  //  TODO: scan LMDB range for blob-ref events (tag 0x02, op 0x03)
-  //  in the chopped epoch and decrement u3a_blob.log_w for each.
-  //  Then call _blob_maybe_delete for each affected bid.
-  //  For now, log_w is only incremented (never decremented on chop).
+  //  blob log_w is rebuilt post-chop by u3_disk_chop, not per-epoch.
   //
 
   //  delete files in epoch directory
@@ -1510,6 +1531,146 @@ _disk_vere_diff(u3_disk* log_u)
   return c3n;
 }
 
+/* _disk_chop_zero_cb(): u3h_walk_with callback — zero log_w and les_w.
+**
+**   les_w is zeroed because leases are transient IPC state: the lease PQ
+**   lives in C heap (not persisted), so after a restart/chop the lease
+**   entries that would decrement les_w are gone.
+*/
+static void
+_disk_chop_zero_cb(u3_noun kev, void* ptr_v)
+{
+  (void)ptr_v;
+  u3_noun val = u3t(kev);
+  c3_w off_w = 0;
+  u3r_safe_word(val, &off_w);
+  u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
+  blb_u->log_w = 0;
+  blb_u->les_w = 0;
+}
+
+/* _disk_chop_del: accumulator for collecting blb_p keys to delete.
+*/
+typedef struct {
+  const c3_c* pax_c;
+  c3_d*       bid_d;   //  array of bid keys to delete
+  c3_z        len_z;
+  c3_z        cap_z;
+} _disk_chop_del;
+
+/* _disk_chop_delete_cb(): u3h_walk_with callback — collect dead blobs.
+*/
+static void
+_disk_chop_delete_cb(u3_noun kev, void* ptr_v)
+{
+  _disk_chop_del* del_u = ptr_v;
+  u3_noun key = u3h(kev);
+  u3_noun val = u3t(kev);
+  c3_w off_w = 0;
+  u3r_safe_word(val, &off_w);
+  u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
+
+  fprintf(stderr, "chop: blob mug=%u seq=%u log_w=%u les_w=%u\r\n",
+          (unsigned)blb_u->mug_h, (unsigned)blb_u->seq_w,
+          (unsigned)blb_u->log_w, (unsigned)blb_u->les_w);
+
+  //  delete when no event-log or lease refs remain.
+  //  bob_p (live noun) is NOT checked: the file is the expensive part,
+  //  and any surviving bob atom will gracefully fail on read (u3r_blob_map
+  //  returns NULL for missing files).
+  //
+  if ( 0 == blb_u->log_w && 0 == blb_u->les_w ) {
+    fprintf(stderr, "chop: DELETING blob mug=%u seq=%u\r\n",
+            (unsigned)blb_u->mug_h, (unsigned)blb_u->seq_w);
+    u3_blob_delete(del_u->pax_c, blb_u->mug_h, blb_u->seq_w);
+
+    //  collect bid for post-walk blb_p cleanup
+    //
+    if ( del_u->len_z == del_u->cap_z ) {
+      del_u->cap_z = del_u->cap_z ? del_u->cap_z * 2 : 8;
+      del_u->bid_d = c3_realloc(del_u->bid_d, del_u->cap_z * sizeof(c3_d));
+    }
+    del_u->bid_d[del_u->len_z++] =
+      ((c3_d)blb_u->mug_h << 32) | (c3_d)blb_u->seq_w;
+  }
+}
+
+/* _disk_chop_rebuild_log_w(): rebuild blob log_w after epoch deletion.
+**
+**   1. zero all log_w via HAMT walk
+**   2. scan remaining LMDB events, increment log_w for each bob atom
+**   3. delete blob files whose total refcount is now zero
+*/
+static void
+_disk_chop_rebuild_log_w(u3_disk* log_u)
+{
+  //  step 1: zero all log_w
+  //
+  u3h_walk_with(u3H->ban_u.blb_p, _disk_chop_zero_cb, 0);
+
+  //  step 2: scan remaining events for bob atoms
+  //
+  c3_d lo_d = 0, hi_d = 0;
+  u3_lmdb_gulf(log_u->mdb_u, &lo_d, &hi_d);
+
+  if ( lo_d && hi_d >= lo_d ) {
+    u3_lmdb_walk itr_u;
+    if ( c3y == u3_lmdb_walk_init(log_u->mdb_u, &itr_u, lo_d, hi_d) ) {
+      while ( itr_u.nex_d <= itr_u.las_d ) {
+        size_t len_i;
+        void*  buf_v;
+
+        if ( c3n == u3_lmdb_walk_next(&itr_u, &len_i, &buf_v) ) break;
+        if ( len_i <= 4 ) continue;
+
+        c3_y*   pay_y = (c3_y*)buf_v + 4;
+        c3_d    pay_d = len_i - 4;
+        u3_weak job   = u3s_tap_xeno(pay_d, pay_y);
+        if ( u3_none == job ) continue;  //  jam event — no bob atoms
+
+        struct { c3_d* ids; c3_z len; c3_z cap; } acc = {0, 0, 0};
+        u3a_walk_fore(job, &acc, _disk_chop_bob_atom, _disk_chop_bob_cell);
+
+        for ( c3_z i = 0; i < acc.len; i++ ) {
+          u3_noun bid = u3i_chub(acc.ids[i]);
+          u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bid);
+          if ( u3_none != bv ) {
+            c3_w off_w = 0;
+            u3r_safe_word(bv, &off_w);
+            u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
+            blb_u->log_w++;
+          }
+          u3z(bid);
+        }
+
+        c3_free(acc.ids);
+        u3z(job);
+      }
+      u3_lmdb_walk_done(&itr_u);
+    }
+  }
+
+  //  step 3: delete unreferenced blobs and clean up blb_p
+  //
+  {
+    _disk_chop_del del_u = { .pax_c = log_u->dir_u->pax_c };
+    u3h_walk_with(u3H->ban_u.blb_p, _disk_chop_delete_cb, &del_u);
+
+    for ( c3_z i_z = 0; i_z < del_u.len_z; i_z++ ) {
+      u3_noun bid = u3i_chub(del_u.bid_d[i_z]);
+      u3_weak bv  = u3h_get(u3H->ban_u.blb_p, bid);
+      if ( u3_none != bv ) {
+        c3_w off_w = 0;
+        u3r_safe_word(bv, &off_w);
+        u3a_wfree((void*)u3a_into(off_w));
+        u3h_del(u3H->ban_u.blb_p, bid);
+      }
+      u3z(bid);
+    }
+    c3_free(del_u.bid_d);
+  }
+}
+
 /* u3_disk_chop(): delete all but the latest 2 epocs.
 */
 void
@@ -1539,6 +1700,16 @@ u3_disk_chop(u3_disk* log_u, c3_d eve_d)
   }
 
   c3_free(sot_d);
+
+  //  rebuild blob log_w after chop.
+  //
+  //  step 1: zero all log_w via u3h_walk_with on blb_p
+  //  step 2: scan remaining LMDB events for bob atoms, rebuild log_w
+  //  step 3: delete blobs with all-zero refcounts
+  //
+  fprintf(stderr, "chop: rebuilding blob log refs (blb_p entries: %u)...\r\n",
+          (unsigned)u3h_wyt(u3H->ban_u.blb_p));
+  _disk_chop_rebuild_log_w(log_u);
 
   fprintf(stderr, "chop: event log truncation complete\r\n");
 }

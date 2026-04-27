@@ -3,6 +3,7 @@
 #include "vortex.h"
 
 #include "allocate.h"
+#include "hashtable.h"
 #include "imprison.h"
 #include "jets/k.h"
 #include "jets/q.h"
@@ -370,9 +371,19 @@ u3v_mark()
   qua_u[0]->nam_c = strdup("kernel");
   qua_u[0]->siz_w = u3a_mark_noun(arv_u->roc) * sizeof(c3_w);
 
-  qua_u[1] = c3_calloc(sizeof(*qua_u[2]));
+  qua_u[1] = c3_calloc(sizeof(*qua_u[1]));
   qua_u[1]->nam_c = strdup("wish cache");
   qua_u[1]->siz_w = u3a_mark_noun(arv_u->yot) * sizeof(c3_w);
+
+  //  mark blob bank HAMTs as live GC roots so their nodes
+  //  aren't swept during u3m_pack / u3a_sweep.
+  //
+  if ( u3H->ban_u.blb_p ) {
+    u3h_mark(u3H->ban_u.blb_p);
+  }
+  if ( u3H->ban_u.bob_p ) {
+    u3h_mark(u3H->ban_u.bob_p);
+  }
 
   qua_u[2] = NULL;
 
@@ -408,4 +419,13 @@ u3v_rewrite_compact(void)
   //
   u3a_relocate_noun(&(u3A->roc));
   u3a_relocate_noun(&(u3A->yot));
+
+  //  relocate blob bank HAMT roots for compaction.
+  //
+  if ( u3H->ban_u.blb_p ) {
+    u3h_relocate(&(u3H->ban_u.blb_p));
+  }
+  if ( u3H->ban_u.bob_p ) {
+    u3h_relocate(&(u3H->ban_u.bob_p));
+  }
 }

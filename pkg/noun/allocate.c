@@ -886,6 +886,7 @@ _me_bob_dead(u3a_atom* atm_u)
   c3_h mug_h = atm_u->mug_h;
   c3_w seq_w = atm_u->buf_w[0];
   c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+
   u3_noun bid = u3i_chub(bid_d);
 
   //  remove from interning index (noun is about to be freed)
@@ -899,7 +900,7 @@ _me_bob_dead(u3a_atom* atm_u)
 
   if ( u3C.blob_del_f ) {
     if ( u3_none == bv ) {
-      //  no u3a_blob entry → blob was never registered or already deleted.
+      //  no u3a_blob entry — blob was never registered or already deleted.
       //  call del_f anyway (king needs to release the lease).
       //
       u3C.blob_del_f(mug_h, seq_w);
@@ -915,6 +916,7 @@ _me_bob_dead(u3a_atom* atm_u)
 
       if ( 0 == blb_u->log_w && 0 == blb_u->les_w ) {
         u3C.blob_del_f(mug_h, seq_w);
+        return;
       }
     }
   }
