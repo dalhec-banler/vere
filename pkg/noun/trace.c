@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "allocate.h"
 #include "imprison.h"
@@ -1129,12 +1130,25 @@ u3t_etch_meme(c3_w mod_w)
   }
 }
 
-/* u3t_sstack_init: initalize a root node on the spin stack 
+/* _shm_available(): check if POSIX shared memory is available.
+**                   Returns false on Android and other platforms without /dev/shm.
+*/
+static c3_o
+_shm_available()
+{
+  return (0 == access("/dev/shm", F_OK)) ? c3y : c3n;
+}
+
+/* u3t_sstack_init: initalize a root node on the spin stack
 */
 void
 u3t_sstack_init()
 {
 #ifndef U3_OS_windows
+  if ( c3n == _shm_available() ) {
+    return;
+  }
+
   c3_c shm_name[256];
   snprintf(shm_name, sizeof(shm_name), SLOW_STACK_NAME, getppid());
   c3_h shm_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0666);
@@ -1162,18 +1176,21 @@ u3t_sstack_init()
 }
 
 #ifndef U3_OS_windows
-/* u3t_sstack_open: initalize a root node on the spin stack 
+/* u3t_sstack_open: initalize a root node on the spin stack
  */
 u3t_spin*
 u3t_sstack_open()
 {
-  //Setup spin stack
+  if ( c3n == _shm_available() ) {
+    return NULL;
+  }
+
   c3_c shm_name[256];
   snprintf(shm_name, sizeof(shm_name), SLOW_STACK_NAME, getpid());
   c3_h shm_fd = shm_open(shm_name, O_CREAT | O_RDWR, 0);
   if ( -1 == shm_fd) {
     perror("shm_open failed");
-    return NULL; 
+    return NULL;
   }
 
   u3t_spin* stk_u = mmap(NULL, TRACE_PSIZE, 
