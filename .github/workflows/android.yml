@@ -72,6 +72,7 @@ jobs:
           zig build \
             -Dtarget=aarch64-linux-musl \
             -Doptimize=${OPTIMIZE} \
+            -Dandroid=true \
             --summary all
 
       - name: Get version info

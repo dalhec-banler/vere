@@ -108,6 +108,7 @@ const BuildCfg = struct {
     ubsan: bool = false,
     asan: bool = false,
     vere32: bool = false,
+    android: bool = false,
     tracy_enable: bool = false,
     tracy_callstack: bool = false,
     tracy_no_exit: bool = false,
@@ -200,6 +201,12 @@ pub fn build(b: *std.Build) !void {
         "Compile in 32-bit mode",
     ) orelse false;
 
+    const android = b.option(
+        bool,
+        "android",
+        "Build for Android (sets __ANDROID__ define)",
+    ) orelse false;
+
     const tracy_enable = b.option(bool, "tracy", "Enable Tracy profiler") orelse false;
     const tracy_callstack = b.option(bool, "tracy-callstack", "Enable Tracy callstack capture") orelse false;
     const tracy_no_exit = b.option(bool, "tracy-no-exit", "Wait for profiler connection before exiting") orelse false;
@@ -241,6 +248,7 @@ pub fn build(b: *std.Build) !void {
         .asan = asan,
         .ubsan = ubsan,
         .vere32 = vere32,
+        .android = android,
         .tracy_enable = tracy_enable,
         .tracy_callstack = tracy_callstack,
         .tracy_no_exit = tracy_no_exit,
@@ -367,6 +375,9 @@ fn buildBinary(
 
     if (!cfg.vere32)
         try urbit_flags.appendSlice(&.{"-DVERE64"});
+
+    if (cfg.android)
+        try urbit_flags.appendSlice(&.{"-D__ANDROID__"});
 
     if (cfg.urth_mass)
         try urbit_flags.appendSlice(&.{"-DU3_URTH_MASS"});
