@@ -142,7 +142,11 @@
 ***
 ***   NB: 2^30 words == 4G
 **/
-#   if defined(U3_OS_linux)
+#   if defined(__ANDROID__)
+      // Android has stricter ASLR; use a lower address that's more likely
+      // to be available. ARM64 Android typically has 39-bit VA.
+#     define U3_OS_LoomBase 0x100000000
+#   elif defined(U3_OS_linux)
 #     ifdef __LP64__
 #       ifdef ASAN_ENABLED
 #         define U3_OS_LoomBase 0x10007ffff000

@@ -182,6 +182,13 @@ static void register_cb(DNSServiceRef sref,
 
 void mdns_init(uint16_t port, bool fake, char* our, mdns_cb* cb, void* context)
 {
+#ifdef __ANDROID__
+  // mDNS/DNS-SD not available on Android - Avahi/D-Bus don't exist
+  // Android uses NSD (Network Service Discovery) via Java APIs
+  u3l_log("mdns: disabled on Android");
+  return;
+#endif
+
   #if defined(U3_OS_linux)
   setenv("AVAHI_COMPAT_NOWARN", "1", 0);
   setenv("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/var/run/dbus/system_bus_socket", 0);

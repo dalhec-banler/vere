@@ -13,7 +13,7 @@
 #endif
 #include <fcntl.h>
 #include <sys/stat.h>
-#if defined(U3_OS_linux)
+#if defined(U3_OS_linux) && !defined(__ANDROID__)
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
 #endif
@@ -863,7 +863,7 @@ u3m_stacktrace()
 
     free(strings);
   }
-#elif defined(U3_OS_linux)
+#elif defined(U3_OS_linux) && !defined(__ANDROID__)
   /* TODO: Fix unwind not getting past signal trampoline on linux aarch64
    */
   fprintf(stderr, "Stacktrace:\r\n");
@@ -896,6 +896,9 @@ u3m_stacktrace()
     data.fail = 1;
     fprintf(stderr, "Backtrace failed\r\n");
   }
+#elif defined(__ANDROID__)
+  // Android: libunwind not available, just print basic message
+  fprintf(stderr, "Stacktrace: (not available on Android)\r\n");
 #endif
 #endif
 }
@@ -2286,7 +2289,9 @@ _cm_limits(void)
 #ifndef U3_OS_windows
   struct rlimit rlm;
 
+#ifndef __ANDROID__
   //  Moar stack.
+  //  (Android restricts setrlimit for RLIMIT_STACK)
   //
   {
     u3_assert( 0 == getrlimit(RLIMIT_STACK, &rlm) );
@@ -2331,7 +2336,8 @@ _cm_limits(void)
     }
   }
 # endif
-#endif
+#endif  // !__ANDROID__
+#endif  // !U3_OS_windows
 }
 
 /* u3m_fault(): handle a memory event with libsigsegv protocol.
