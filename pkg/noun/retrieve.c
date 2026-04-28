@@ -286,7 +286,7 @@ _cr_sing_atom(u3_atom a, u3_noun b)
     if ( (c3y == a_bob) && (c3y == b_bob) ) {
       u3a_atom* a_u = u3a_to_ptr(a);
       u3a_atom* b_u = u3a_to_ptr(b);
-      return (  (a_u->mug_h   == b_u->mug_h)
+      return (  (a_u->mug_w   == b_u->mug_w)
              && (a_u->buf_w[0] == b_u->buf_w[0]) ) ? c3y : c3n;
     }
     //  bob vs normal (or normal vs bob): materialize the bob
@@ -2224,8 +2224,8 @@ _cr_mug_next(u3a_pile* pil_u, u3_noun veb)
         //  materialize only if somehow missing (should not occur)
         //
         if ( c3y == u3a_is_bob(veb) ) {
-          if ( vat_u->mug_h ) {
-            return (c3_h)vat_u->mug_h;
+          if ( vat_u->mug_w ) {
+            return (c3_h)vat_u->mug_w;
           }
           u3_atom mat = u3r_blob_load(veb, u3C.dir_c);
           if ( u3_none == mat ) {
@@ -2237,7 +2237,7 @@ _cr_mug_next(u3a_pile* pil_u, u3_noun veb)
         else {
           mug_h = u3r_mug_words(vat_u->buf_w, vat_u->len_w);
         }
-        vat_u->mug_h = mug_h;
+        vat_u->mug_w = mug_h;
         return mug_h;
       }
       //  veb is a cell, push a stack frame to mark head-recursion
@@ -2522,13 +2522,13 @@ u3r_blob_load(u3_atom a, const c3_c* pax_c)
   u3_assert( c3y == u3a_is_bob(a) );
 
   c3_h mug_h = u3a_bob_mug(a);
-  c3_w seq_w = u3a_bob_seq(a);
+  c3_h seq_h = u3a_bob_seq(a);
 
   //  build path: $pier/.urb/bob/<mug>/<seq>
   //
   c3_c fil_c[8192];
-  snprintf(fil_c, sizeof(fil_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_w,
-           pax_c, mug_h, seq_w);
+  snprintf(fil_c, sizeof(fil_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_h,
+           pax_c, mug_h, seq_h);
 
   struct stat st_u;
   if ( -1 == stat(fil_c, &st_u) ) {
@@ -2580,11 +2580,11 @@ u3r_blob_map(u3_atom a, c3_d* len_d)
   u3_assert( c3y == u3a_is_bob(a) );
 
   c3_h mug_h = u3a_bob_mug(a);
-  c3_w seq_w = u3a_bob_seq(a);
+  c3_h seq_h = u3a_bob_seq(a);
 
   c3_c fil_c[8192];
-  snprintf(fil_c, sizeof(fil_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_w,
-           u3C.dir_c, mug_h, seq_w);
+  snprintf(fil_c, sizeof(fil_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_h,
+           u3C.dir_c, mug_h, seq_h);
 
   struct stat st_u;
   if ( -1 == stat(fil_c, &st_u) ) {

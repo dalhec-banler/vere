@@ -190,11 +190,11 @@ _http_vec_to_octs(h2o_iovec_t vec_u)
 
   if ( (c3_d)vec_u.len >= U3_BLOB_THRESH ) {
     c3_h mug_h;
-    c3_w seq_w;
+    c3_h seq_h;
     if ( c3y == u3_blob_save(u3C.dir_c, (const c3_y*)vec_u.base,
-                              (c3_d)vec_u.len, &mug_h, &seq_w) )
+                              (c3_d)vec_u.len, &mug_h, &seq_h) )
     {
-      bod = u3i_blob(mug_h, seq_w);
+      bod = u3i_blob(mug_h, seq_h);
     }
   }
   if ( u3_none == bod ) {
@@ -221,7 +221,7 @@ _cttp_bods_free(u3_hbod* bod_u)
 
     if ( bod_u->own_y ) {
       //  owner: release the whole mapping
-      u3_blob_unmap(bod_u->own_y, bod_u->map_d);
+      u3_blob_umap(bod_u->own_y, bod_u->map_d);
     }
     else if ( bod_u->map_y ) {
       //  view: hint kernel to drop page-cache pages we've already sent
@@ -255,13 +255,13 @@ static u3_hbod*
 _cttp_bod_from_bob(u3_atom a, c3_w len_w)
 {
   c3_h mug_h = u3a_bob_mug(a);
-  c3_w seq_w = u3a_bob_seq(a);
+  c3_h seq_h = u3a_bob_seq(a);
   c3_d map_d = 0;
 
-  const c3_y* map_y = u3_blob_map(u3C.dir_c, mug_h, seq_w, &map_d);
+  const c3_y* map_y = u3_blob_mmap(u3C.dir_c, mug_h, seq_h, &map_d);
   if ( !map_y || (c3_d)len_w > map_d ) {
     if ( map_y ) {
-      u3_blob_unmap(map_y, map_d);
+      u3_blob_umap(map_y, map_d);
     }
     return 0;
   }

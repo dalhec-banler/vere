@@ -853,15 +853,11 @@ _me_gain_south(u3_noun dog)
 static void
 _me_bob_dead(u3a_atom* atm_u)
 {
-  c3_h mug_h = atm_u->mug_h;
-  c3_w seq_w = atm_u->buf_w[0];
-  c3_d bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-  u3_noun bid = u3i_chub(bid_d);
+  c3_h mug_h = (c3_h)atm_u->mug_w;
+  c3_h seq_h = (c3_h)atm_u->buf_w[0];
+  c3_w bid_w   = ((c3_w)mug_h << 32) | (c3_w)seq_h;
 
-  //  clear the interned atom pointer in blb_p
-  //
-  u3_weak bv = u3h_get(u3H->blb_p, bid);
-  u3z(bid);
+  u3_weak bv = u3h_get(u3H->blb_p, bid_w);
 
   if ( u3_none != bv ) {
     c3_w off_w = 0;
@@ -869,20 +865,15 @@ _me_bob_dead(u3a_atom* atm_u)
     u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
     blb_u->atm_w = 0;
 
-    //  if all refs are zero, delete the blob
-    //
     if ( u3C.blob_del_f
       && 0 == blb_u->log_w
       && 0 == blb_u->les_w )
     {
-      u3C.blob_del_f(mug_h, seq_w);
+      u3C.blob_del_f(mug_h, seq_h);
     }
   }
   else if ( u3C.blob_del_f ) {
-    //  no blb_p entry — blob was never registered or already deleted.
-    //  notify king so it can release its lease.
-    //
-    u3C.blob_del_f(mug_h, seq_w);
+    u3C.blob_del_f(mug_h, seq_h);
   }
 }
 

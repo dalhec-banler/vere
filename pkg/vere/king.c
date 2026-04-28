@@ -22,10 +22,10 @@ static const c3_c* ver_hos_c = "https://bootstrap.urbit.org/vere";
 /* _king_blob_del(): king-side del_f — release a blob lease via IPC.
 */
 static void
-_king_blob_del(c3_h mug_h, c3_w seq_w)
+_king_blob_del(c3_h mug_h, c3_h seq_h)
 {
   if ( u3K.pir_u && u3K.pir_u->god_u ) {
-    u3_lord_blob_release(u3K.pir_u->god_u, mug_h, seq_w);
+    u3_lord_blob_release(u3K.pir_u->god_u, mug_h, seq_h);
   }
 }
 

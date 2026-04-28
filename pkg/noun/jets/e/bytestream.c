@@ -33,7 +33,7 @@ _x_octs(u3_noun octs, u3_atom* p_octs, u3_atom* q_octs) {
 //    zero bytes (p_octs - met).
 //
 //    The legacy version read (c3_y*)ptr_a->buf_w directly, which for a
-//    bob atom returned seq_w rather than the blob's content.  Going
+//    bob atom returned seq_h rather than the blob's content.  Going
 //    through u3r_view gets the real bytes (mmap for bobs).
 //
 static c3_o

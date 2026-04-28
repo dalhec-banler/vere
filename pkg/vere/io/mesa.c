@@ -2361,12 +2361,12 @@ _mesa_hear_page(u3_mesa_pict* pic_u, sockaddr_in lan_u)
         //
         if ( (c3_d)res_h > U3_BLOB_THRESH ) {
           c3_h bob_mug_h;
-          c3_w bob_seq_w;
+          c3_h bob_seq_h;
 
           if ( c3y == u3_blob_save(sam_u->pir_u->pax_c, buf_y,
-                                    (c3_d)res_h, &bob_mug_h, &bob_seq_w) )
+                                    (c3_d)res_h, &bob_mug_h, &bob_seq_h) )
           {
-            pac = u3i_blob(bob_mug_h, bob_seq_w);
+            pac = u3i_blob(bob_mug_h, bob_seq_h);
           }
           else {
             pac = u3i_bytes(res_h, buf_y);

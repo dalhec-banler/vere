@@ -404,6 +404,12 @@ u3v_reclaim(void)
   if ( &(u3H->rod_u) == u3R ) {
     u3z(u3A->yot);
     u3A->yot = u3_nul;
+
+    // //  clear ford cache to release refs (e.g., blob atoms held
+    // //  by cached computation results after |tomb)
+    // //
+    // u3h_free(u3R->cax.for_p);
+    // u3R->cax.for_p = u3h_new_cache(u3C.per_w);
   }
 }
 

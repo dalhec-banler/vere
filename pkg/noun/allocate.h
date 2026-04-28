@@ -157,9 +157,10 @@
 
     /* u3a_blob: loom-resident metadata for a blob file.
     **
-    **   Stored in u3H->blb_p HAMT keyed by bid = (mug_h << 32) | seq_w.
-    **   Three independent ref-sources protect the backing file:
+    **   Stored in u3H->blb_p keyed by bid = (mug_h << 32) | seq_h.
+    **   bid is always a direct atom on VERE64 (63 bits max).
     **
+    **   Three independent ref-sources protect the backing file:
     **     log_w  — event-log refs (inc on commit, dec on chop)
     **     les_w  — lease refs (inc on king acquire, dec on release/expiry)
     **     atm_w  — interned bob atom loom offset (0 = no live atom)
@@ -171,7 +172,7 @@
         c3_w  log_w;   //  event-log refcount
         c3_w  les_w;   //  lease refcount
         c3_h  mug_h;   //  31-bit content mug (= bucket dir name)
-        c3_w  seq_w;   //  sequence number within bucket
+        c3_h  seq_h;   //  sequence number within bucket
         c3_d  siz_d;   //  byte size of blob file
         c3_w  atm_w;   //  loom offset of interned bob atom (0 = none)
       } u3a_blob;
@@ -652,22 +653,26 @@ typedef struct {
       return (atm_u->len_w & u3a_blob_flag) ? c3y : c3n;
     }
 
-    /* u3a_bob_mug(): 31-bit mug of a bob atom's content (= blob directory name).
-    **   [som] must be a bob atom.
+    /* u3a_bob_mug(): content mug of a bob atom (= blob directory name).
     */
     static inline c3_h
     u3a_bob_mug(u3_atom som) {
-      u3a_atom* atm_u = u3a_to_ptr(som);
-      return atm_u->mug_h;
+      return (c3_h)((u3a_atom*)u3a_to_ptr(som))->mug_w;
     }
 
-    /* u3a_bob_seq(): sequence number of a bob atom within its mug bucket.
-    **   [som] must be a bob atom.
+    /* u3a_bob_seq(): sequence number within mug bucket.
+    */
+    static inline c3_h
+    u3a_bob_seq(u3_atom som) {
+      return (c3_h)((u3a_atom*)u3a_to_ptr(som))->buf_w[0];
+    }
+
+    /* u3a_bob_bid(): blob ID = (mug << 32) | seq.  Direct atom on VERE64.
     */
     static inline c3_w
-    u3a_bob_seq(u3_atom som) {
+    u3a_bob_bid(u3_atom som) {
       u3a_atom* atm_u = u3a_to_ptr(som);
-      return atm_u->buf_w[0];
+      return ((c3_w)(c3_h)atm_u->mug_w << 32) | (c3_w)(c3_h)atm_u->buf_w[0];
     }
 
   /**  Functions.

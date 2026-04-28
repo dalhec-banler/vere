@@ -45,10 +45,10 @@ _blob_lock_path(c3_c* out_c, const c3_c* pax_c, c3_h mug_h)
 /* u3_blob_path(): write filesystem path for a blob into [out_c].
 */
 void
-u3_blob_path(c3_c* out_c, const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
+u3_blob_path(c3_c* out_c, const c3_c* pax_c, c3_h mug_h, c3_h seq_h)
 {
-  snprintf(out_c, 8192, "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_w,
-           pax_c, mug_h, seq_w);
+  snprintf(out_c, 8192, "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_h,
+           pax_c, mug_h, seq_h);
 }
 
 /* u3_blob_init(): initialize blob store; create .urb/bob/ if needed.
@@ -121,7 +121,7 @@ u3_blob_stg_init(const c3_c* pax_c)
 ** Creates the mug directory and lockfile if needed.
 ** Returns 0 on failure.
 */
-static c3_w
+static c3_h
 _blob_lock_acquire(const c3_c* pax_c, c3_h mug_h)
 {
   c3_c dir_c[8192];
@@ -161,9 +161,9 @@ _blob_lock_acquire(const c3_c* pax_c, c3_h mug_h)
   //  read current next-seq (0 means empty/new file)
   c3_c buf_c[32] = {0};
   ssize_t red_i = read(lok_i, buf_c, sizeof(buf_c) - 1);
-  c3_w nex_w = ( red_i > 0 ) ? (c3_w)strtoul(buf_c, 0, 10) : 1;
-  if ( 0 == nex_w ) {
-    nex_w = 1;
+  c3_h nex_h = ( red_i > 0 ) ? (c3_h)strtoul(buf_c, 0, 10) : 1;
+  if ( 0 == nex_h ) {
+    nex_h = 1;
   }
 
   //  write incremented value back
@@ -181,7 +181,7 @@ _blob_lock_acquire(const c3_c* pax_c, c3_h mug_h)
   }
 
   c3_c wri_c[32];
-  snprintf(wri_c, sizeof(wri_c), "%" PRIc3_w, nex_w + 1);
+  snprintf(wri_c, sizeof(wri_c), "%" PRIc3_h, nex_h + 1);
   if ( -1 == write(lok_i, wri_c, strlen(wri_c)) ) {
     fprintf(stderr, "blob: failed to write lock %s: %s\r\n",
             lck_c, strerror(errno));
@@ -193,20 +193,20 @@ _blob_lock_acquire(const c3_c* pax_c, c3_h mug_h)
   fsync(lok_i);
   close(lok_i);
 
-  return nex_w;
+  return nex_h;
 }
 
 /* _blob_dedup(): scan bucket for byte-equal content.
 **
 ** Returns the sequence number of an existing equal blob, or 0 if none.
 */
-static c3_w
-_blob_dedup(const c3_c* pax_c, c3_h mug_h, c3_w max_w,
+static c3_h
+_blob_dedup(const c3_c* pax_c, c3_h mug_h, c3_h max_h,
             const c3_y* dat_y, c3_d len_d)
 {
-  for ( c3_w seq_w = 1; seq_w < max_w; seq_w++ ) {
+  for ( c3_h seq_h = 1; seq_h < max_h; seq_h++ ) {
     c3_c fil_c[8192];
-    u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+    u3_blob_path(fil_c, pax_c, mug_h, seq_h);
 
     struct stat st_u;
     if ( -1 == stat(fil_c, &st_u) ) {
@@ -241,7 +241,7 @@ _blob_dedup(const c3_c* pax_c, c3_h mug_h, c3_w max_w,
 
     close(fid_i);
     if ( c3y == eql_o ) {
-      return seq_w;
+      return seq_h;
     }
   }
   return 0;
@@ -284,20 +284,20 @@ u3_blob_save(const c3_c* pax_c,
              const c3_y* dat_y,
              c3_d        len_d,
              c3_h*       mug_h,
-             c3_w*       seq_w)
+             c3_h*       seq_h)
 {
   *mug_h = _blob_mug(dat_y, len_d);
 
   //  acquire lock and get next sequence number
-  c3_w nex_w = _blob_lock_acquire(pax_c, *mug_h);
-  if ( 0 == nex_w ) {
+  c3_h nex_h = _blob_lock_acquire(pax_c, *mug_h);
+  if ( 0 == nex_h ) {
     return c3n;
   }
 
   //  check for duplicate before writing
-  c3_w dup_w = _blob_dedup(pax_c, *mug_h, nex_w, dat_y, len_d);
-  if ( 0 != dup_w ) {
-    *seq_w = dup_w;
+  c3_h dup_h = _blob_dedup(pax_c, *mug_h, nex_h, dat_y, len_d);
+  if ( 0 != dup_h ) {
+    *seq_h = dup_h;
     //  we already incremented the lock counter, but that's harmless —
     //  nex_w slot will simply be skipped (sparse sequence numbers are fine)
     return c3y;
@@ -305,7 +305,7 @@ u3_blob_save(const c3_c* pax_c,
 
   //  write blob file
   c3_c fil_c[8192];
-  u3_blob_path(fil_c, pax_c, *mug_h, nex_w);
+  u3_blob_path(fil_c, pax_c, *mug_h, nex_h);
 
   c3_i fid_i = open(fil_c, O_WRONLY | O_CREAT | O_EXCL, 0400);
   if ( -1 == fid_i ) {
@@ -333,7 +333,7 @@ u3_blob_save(const c3_c* pax_c,
   fsync(fid_i);
   close(fid_i);
 
-  *seq_w = nex_w;
+  *seq_h = nex_h;
   return c3y;
 }
 
@@ -348,7 +348,7 @@ u3_blob_save_fd(const c3_c* pax_c,
                 c3_i        fid_i,
                 c3_d        len_d,
                 c3_h*       mug_h,
-                c3_w*       seq_w)
+                c3_h*       seq_h)
 {
   if ( 0 == len_d ) {
     fprintf(stderr, "blob: refusing to save empty file\r\n");
@@ -363,7 +363,7 @@ u3_blob_save_fd(const c3_c* pax_c,
   }
   madvise(map_v, (size_t)len_d, MADV_SEQUENTIAL);
 
-  c3_o ret_o = u3_blob_save(pax_c, (const c3_y*)map_v, len_d, mug_h, seq_w);
+  c3_o ret_o = u3_blob_save(pax_c, (const c3_y*)map_v, len_d, mug_h, seq_h);
   munmap(map_v, (size_t)len_d);
   return ret_o;
 }
@@ -374,15 +374,15 @@ u3_blob_save_fd(const c3_c* pax_c,
 **   The mapping is released immediately after the loom copy.
 */
 u3_weak
-u3_blob_load(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
+u3_blob_load(const c3_c* pax_c, c3_h mug_h, c3_h seq_h)
 {
   c3_c fil_c[8192];
-  u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+  u3_blob_path(fil_c, pax_c, mug_h, seq_h);
 
   struct stat st_u;
   if ( -1 == stat(fil_c, &st_u) ) {
-    fprintf(stderr, "blob: missing blob %" PRIc3_h "/%" PRIc3_w ": %s\r\n",
-            mug_h, seq_w, strerror(errno));
+    fprintf(stderr, "blob: missing blob %" PRIc3_h "/%" PRIc3_h ": %s\r\n",
+            mug_h, seq_h, strerror(errno));
     return u3_none;
   }
 
@@ -422,22 +422,22 @@ u3_blob_load(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
 /* u3_blob_exists(): check whether a blob file exists.
 */
 c3_o
-u3_blob_exists(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
+u3_blob_live(const c3_c* pax_c, c3_h mug_h, c3_h seq_h)
 {
   c3_c fil_c[8192];
-  u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+  u3_blob_path(fil_c, pax_c, mug_h, seq_h);
 
   struct stat st_u;
   return ( 0 == stat(fil_c, &st_u) ) ? c3y : c3n;
 }
 
-/* u3_blob_delete(): delete a blob file.
+/* u3_blob_wipe(): delete a blob file.
 */
 void
-u3_blob_delete(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
+u3_blob_wipe(const c3_c* pax_c, c3_h mug_h, c3_h seq_h)
 {
   c3_c fil_c[8192];
-  u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+  u3_blob_path(fil_c, pax_c, mug_h, seq_h);
 
   if ( 0 != unlink(fil_c) && ENOENT != errno ) {
     fprintf(stderr, "blob: failed to delete %s: %s\r\n",
@@ -484,16 +484,16 @@ u3_blob_delete(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
 **   [stg_c] is the path to a temp file under $pier/.urb/bob/stg/.
 **   Computes the mug of its content, checks for duplicates, then either
 **   renames the staging file into bob/<mug>/<seq> (no dup) or unlinks it
-**   (dup found).  On success sets *mug_h and *seq_w.
+**   (dup found).  On success sets *mug_h and *seq_h.
 **
 **   The staging file is always consumed (renamed or unlinked) on success.
 **   On failure the staging file is left in place.
 */
 c3_o
-u3_blob_install_stg(const c3_c* pax_c,
+u3_blob_move_stg(const c3_c* pax_c,
                     const c3_c* stg_c,
                     c3_h*       mug_h,
-                    c3_w*       seq_w)
+                    c3_h*       seq_h)
 {
   struct stat st_u;
   if ( -1 == stat(stg_c, &st_u) ) {
@@ -531,30 +531,30 @@ u3_blob_install_stg(const c3_c* pax_c,
 
   //  acquire mug-bucket lock and get next sequence number
   //
-  c3_w nex_w = _blob_lock_acquire(pax_c, *mug_h);
-  if ( 0 == nex_w ) {
+  c3_h nex_h = _blob_lock_acquire(pax_c, *mug_h);
+  if ( 0 == nex_h ) {
     munmap(map_v, (size_t)len_d);
     return c3n;
   }
 
   //  check for duplicate content
   //
-  c3_w dup_w = _blob_dedup(pax_c, *mug_h, nex_w,
+  c3_h dup_h = _blob_dedup(pax_c, *mug_h, nex_h,
                             (const c3_y*)map_v, len_d);
   munmap(map_v, (size_t)len_d);
 
-  if ( 0 != dup_w ) {
+  if ( 0 != dup_h ) {
     //  duplicate found — consume staging file and return existing seq
     //
     c3_unlink(stg_c);
-    *seq_w = dup_w;
+    *seq_h = dup_h;
     return c3y;
   }
 
   //  rename staging file into final location
   //
   c3_c dst_c[8192];
-  u3_blob_path(dst_c, pax_c, *mug_h, nex_w);
+  u3_blob_path(dst_c, pax_c, *mug_h, nex_h);
 
   if ( 0 != rename(stg_c, dst_c) ) {
     //  rename can fail cross-device; fall back to copy-and-unlink
@@ -589,17 +589,17 @@ u3_blob_install_stg(const c3_c* pax_c,
     c3_unlink(stg_c);
   }
 
-  *seq_w = nex_w;
+  *seq_h = nex_h;
   return c3y;
 }
 
 /* u3_blob_map(): mmap blob file for direct byte access.
 */
 const c3_y*
-u3_blob_map(const c3_c* pax_c, c3_h mug_h, c3_w seq_w, c3_d* len_d)
+u3_blob_mmap(const c3_c* pax_c, c3_h mug_h, c3_h seq_h, c3_d* len_d)
 {
   c3_c fil_c[8192];
-  u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+  u3_blob_path(fil_c, pax_c, mug_h, seq_h);
 
   struct stat st_u;
   if ( -1 == stat(fil_c, &st_u) ) {
@@ -635,7 +635,7 @@ u3_blob_map(const c3_c* pax_c, c3_h mug_h, c3_w seq_w, c3_d* len_d)
 /* u3_blob_unmap(): release mapping returned by u3_blob_map().
 */
 void
-u3_blob_unmap(const c3_y* ptr_y, c3_d len_d)
+u3_blob_umap(const c3_y* ptr_y, c3_d len_d)
 {
   if ( ptr_y && len_d ) {
     munmap((void*)ptr_y, (size_t)len_d);
@@ -649,10 +649,10 @@ u3_blob_unmap(const c3_y* ptr_y, c3_d len_d)
 **   Returns 0 if blob is missing, empty, or all-zero bytes.
 */
 c3_d
-u3_blob_met(const c3_c* pax_c, c3_h mug_h, c3_w seq_w)
+u3_blob_met(const c3_c* pax_c, c3_h mug_h, c3_h seq_h)
 {
   c3_c fil_c[8192];
-  u3_blob_path(fil_c, pax_c, mug_h, seq_w);
+  u3_blob_path(fil_c, pax_c, mug_h, seq_h);
 
   struct stat st_u;
   if ( -1 == stat(fil_c, &st_u) || 0 == st_u.st_size ) {

@@ -1571,8 +1571,13 @@ _disk_chop_delete_cb(u3_noun kev, void* ptr_v)
   u3r_safe_word(val, &off_w);
   u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
 
+  fprintf(stderr, "chop: blob [%x/%u] log=%u les=%u atm=%u\r\n",
+          (unsigned)blb_u->mug_h, (unsigned)blb_u->seq_h,
+          (unsigned)blb_u->log_w, (unsigned)blb_u->les_w,
+          (unsigned)blb_u->atm_w);
+
   if ( 0 == blb_u->log_w && 0 == blb_u->les_w && 0 == blb_u->atm_w ) {
-    u3_blob_delete(del_u->pax_c, blb_u->mug_h, blb_u->seq_w);
+    u3_blob_wipe(del_u->pax_c, blb_u->mug_h, blb_u->seq_h);
 
     //  collect bid for post-walk blb_p cleanup
     //
@@ -1581,7 +1586,7 @@ _disk_chop_delete_cb(u3_noun kev, void* ptr_v)
       del_u->bid_d = c3_realloc(del_u->bid_d, del_u->cap_z * sizeof(c3_d));
     }
     del_u->bid_d[del_u->len_z++] =
-      ((c3_d)blb_u->mug_h << 32) | (c3_d)blb_u->seq_w;
+      ((c3_d)blb_u->mug_h << 32) | (c3_d)blb_u->seq_h;
   }
 }
 
@@ -1622,7 +1627,7 @@ _disk_chop_rebuild_log_w(u3_disk* log_u)
         u3a_walk_fore(job, &acc, _disk_chop_bob_atom, _disk_chop_bob_cell);
 
         for ( c3_z i = 0; i < acc.len; i++ ) {
-          u3_noun bid = u3i_chub(acc.ids[i]);
+          c3_w    bid = (c3_w)acc.ids[i];
           u3_weak bv  = u3h_get(u3H->blb_p, bid);
           if ( u3_none != bv ) {
             c3_w off_w = 0;
@@ -1630,7 +1635,6 @@ _disk_chop_rebuild_log_w(u3_disk* log_u)
             u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
             blb_u->log_w++;
           }
-          u3z(bid);
         }
 
         c3_free(acc.ids);
@@ -1647,7 +1651,7 @@ _disk_chop_rebuild_log_w(u3_disk* log_u)
     u3h_walk_with(u3H->blb_p, _disk_chop_delete_cb, &del_u);
 
     for ( c3_z i_z = 0; i_z < del_u.len_z; i_z++ ) {
-      u3_noun bid = u3i_chub(del_u.bid_d[i_z]);
+      c3_w    bid = (c3_w)del_u.bid_d[i_z];
       u3_weak bv  = u3h_get(u3H->blb_p, bid);
       if ( u3_none != bv ) {
         c3_w off_w = 0;
@@ -1655,7 +1659,6 @@ _disk_chop_rebuild_log_w(u3_disk* log_u)
         u3a_wfree((void*)u3a_into(off_w));
         u3h_del(u3H->blb_p, bid);
       }
-      u3z(bid);
     }
     c3_free(del_u.bid_d);
   }

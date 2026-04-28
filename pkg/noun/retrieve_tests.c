@@ -1212,7 +1212,7 @@ _test_view(void)
     snprintf(pax_c, sizeof(pax_c), "%s/.urb/bob", dir_c);     mkdir(pax_c, 0755);
 
     const c3_h mug_h = 0xabcd1234;
-    const c3_w seq_w = 7;
+    const c3_h seq_h = 7;
 
     snprintf(pax_c, sizeof(pax_c), "%s/.urb/bob/%u", dir_c, (unsigned)mug_h);
     mkdir(pax_c, 0755);
@@ -1221,7 +1221,7 @@ _test_view(void)
     const c3_d bob_d   = sizeof(bob_y) - 1;
 
     snprintf(pax_c, sizeof(pax_c), "%s/.urb/bob/%u/%u",
-             dir_c, (unsigned)mug_h, (unsigned)seq_w);
+             dir_c, (unsigned)mug_h, (unsigned)seq_h);
     FILE* fil_f = fopen(pax_c, "wb");
     if ( !fil_f ) {
       fprintf(stderr, "_test_view(): fopen %s: %s\r\n", pax_c, strerror(errno));
@@ -1234,7 +1234,7 @@ _test_view(void)
     //
     u3C.dir_c = dir_c;
 
-    u3_atom a = u3i_blob(mug_h, seq_w);
+    u3_atom a = u3i_blob(mug_h, seq_h);
 
     u3r_view vu_u;
     u3r_view_init(&vu_u, a);

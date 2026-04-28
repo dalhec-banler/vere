@@ -423,7 +423,7 @@ _lord_plea_blob(u3_lord* god_u, u3_noun dat)
   }
 
   void*   ptr_v = wit_u->blb_u.ptr_v;
-  void  (*fun_f)(void*, c3_h, c3_w, c3_o) = wit_u->blb_u.fun_f;
+  void  (*fun_f)(void*, c3_h, c3_h, c3_o) = wit_u->blb_u.fun_f;
   c3_free(wit_u->blb_u.pax_c);
   c3_free(wit_u);
 
@@ -440,13 +440,13 @@ _lord_plea_blob(u3_lord* god_u, u3_noun dat)
     //
     u3_noun mug_a, seq_a;
     c3_h mug_h = 0;
-    c3_w seq_w = 0;
+    c3_h seq_h = 0;
 
     if ( (c3y == u3r_cell(u3t(dat), &mug_a, &seq_a)) ) {
       u3r_safe_half(mug_a, &mug_h);
-      u3r_safe_word(seq_a, &seq_w);
+      u3r_safe_half(seq_a, &seq_h);
     }
-    if ( fun_f ) fun_f(ptr_v, mug_h, seq_w, c3y);
+    if ( fun_f ) fun_f(ptr_v, mug_h, seq_h, c3y);
   }
   else {
     //  [c3n reason]
@@ -833,7 +833,7 @@ void
 u3_lord_blob_install(u3_lord* god_u,
                      c3_c*    pax_c,
                      void*    ptr_v,
-                     void   (*fun_f)(void*, c3_h, c3_w, c3_o))
+                     void   (*fun_f)(void*, c3_h, c3_h, c3_o))
 {
   u3_writ* wit_u = _lord_writ_new(god_u);
   wit_u->typ_e       = u3_writ_blob;
@@ -847,21 +847,21 @@ u3_lord_blob_install(u3_lord* god_u,
 /* u3_lord_blob_lease(): tell Mars king is acquiring a blob lease.
 */
 void
-u3_lord_blob_lease(u3_lord* god_u, c3_h mug_h, c3_w seq_w)
+u3_lord_blob_lease(u3_lord* god_u, c3_h mug_h, c3_h seq_h)
 {
   _lord_send(god_u, u3nt(c3_s4('b','l','a','s'),
                          u3i_word(mug_h),
-                         u3i_word(seq_w)));
+                         u3i_word(seq_h)));
 }
 
 /* u3_lord_blob_release(): tell Mars king is releasing a blob lease.
 */
 void
-u3_lord_blob_release(u3_lord* god_u, c3_h mug_h, c3_w seq_w)
+u3_lord_blob_release(u3_lord* god_u, c3_h mug_h, c3_h seq_h)
 {
   _lord_send(god_u, u3nt(c3_s4('b','l','r','l'),
                          u3i_word(mug_h),
-                         u3i_word(seq_w)));
+                         u3i_word(seq_h)));
 }
 
 /* u3_lord_save(): save a snapshot.

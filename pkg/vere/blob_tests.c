@@ -191,35 +191,35 @@ _test_save_load(void)
   const c3_y dat_y[] = "the quick brown fox jumps over the lazy dog";
   const c3_d dat_d   = sizeof(dat_y) - 1;  // drop trailing NUL
   c3_h mug_h = 0;
-  c3_w seq_w = 0;
+  c3_h seq_h = 0;
 
-  if ( c3y != u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_w) ) {
+  if ( c3y != u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_h) ) {
     fprintf(stderr, "\033[31mblob save fail\033[0m\r\n");
     exit(1);
   }
-  if ( 1 != seq_w ) {
-    fprintf(stderr, "\033[31mblob save: expected seq=1, got %" PRIc3_w "\033[0m\r\n",
-            seq_w);
+  if ( 1 != seq_h ) {
+    fprintf(stderr, "\033[31mblob save: expected seq=1, got %" PRIc3_h "\033[0m\r\n",
+            seq_h);
     exit(1);
   }
 
   //  file should exist at computed path
   //
   c3_c fil_c[8192];
-  u3_blob_path(fil_c, _tmp_pier, mug_h, seq_w);
+  u3_blob_path(fil_c, _tmp_pier, mug_h, seq_h);
   if ( c3y != _path_exists(fil_c) ) {
     fprintf(stderr, "\033[31mblob save: %s missing\033[0m\r\n", fil_c);
     exit(1);
   }
 
-  if ( c3y != u3_blob_exists(_tmp_pier, mug_h, seq_w) ) {
+  if ( c3y != u3_blob_live(_tmp_pier, mug_h, seq_h) ) {
     fprintf(stderr, "\033[31mblob exists fail\033[0m\r\n");
     exit(1);
   }
 
   //  load and verify bytes
   //
-  u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_w);
+  u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_h);
   if ( u3_none == atm ) {
     fprintf(stderr, "\033[31mblob load: u3_none\033[0m\r\n");
     exit(1);
@@ -254,13 +254,13 @@ _test_dedup(void)
   const c3_d dat_d   = sizeof(dat_y) - 1;
 
   c3_h mug1_h, mug2_h;
-  c3_w seq1_w, seq2_w;
+  c3_h seq1_h, seq2_h;
 
-  if ( c3y != u3_blob_save(_tmp_pier, dat_y, dat_d, &mug1_h, &seq1_w) ) {
+  if ( c3y != u3_blob_save(_tmp_pier, dat_y, dat_d, &mug1_h, &seq1_h) ) {
     fprintf(stderr, "\033[31mblob dedup: first save failed\033[0m\r\n");
     exit(1);
   }
-  if ( c3y != u3_blob_save(_tmp_pier, dat_y, dat_d, &mug2_h, &seq2_w) ) {
+  if ( c3y != u3_blob_save(_tmp_pier, dat_y, dat_d, &mug2_h, &seq2_h) ) {
     fprintf(stderr, "\033[31mblob dedup: second save failed\033[0m\r\n");
     exit(1);
   }
@@ -270,9 +270,9 @@ _test_dedup(void)
                     " vs %" PRIc3_h ")\033[0m\r\n", mug1_h, mug2_h);
     exit(1);
   }
-  if ( seq1_w != seq2_w ) {
+  if ( seq1_h != seq2_h ) {
     fprintf(stderr, "\033[31mblob dedup: expected seq reuse, "
-                    "got %" PRIc3_w "+%" PRIc3_w "\033[0m\r\n", seq1_w, seq2_w);
+                    "got %" PRIc3_h "+%" PRIc3_h "\033[0m\r\n", seq1_h, seq2_h);
     exit(1);
   }
 
@@ -282,13 +282,13 @@ _test_dedup(void)
   const c3_y alt_y[] = "a completely different payload";
   const c3_d alt_d   = sizeof(alt_y) - 1;
   c3_h mug3_h = 0;
-  c3_w seq3_w = 0;
-  if ( c3y != u3_blob_save(_tmp_pier, alt_y, alt_d, &mug3_h, &seq3_w) ) {
+  c3_h seq3_h = 0;
+  if ( c3y != u3_blob_save(_tmp_pier, alt_y, alt_d, &mug3_h, &seq3_h) ) {
     fprintf(stderr, "\033[31mblob dedup: alt save failed\033[0m\r\n");
     exit(1);
   }
   if (  mug1_h == mug3_h
-     && seq1_w == seq3_w )
+     && seq1_h == seq3_h )
   {
     fprintf(stderr, "\033[31mblob dedup: distinct content got same blob\033[0m\r\n");
     exit(1);
@@ -325,8 +325,8 @@ _test_save_fd(void)
   }
 
   c3_h mug_h = 0;
-  c3_w seq_w = 0;
-  c3_o ret_o = u3_blob_save_fd(_tmp_pier, fid_i, dat_d, &mug_h, &seq_w);
+  c3_h seq_h = 0;
+  c3_o ret_o = u3_blob_save_fd(_tmp_pier, fid_i, dat_d, &mug_h, &seq_h);
   close(fid_i);
 
   if ( c3y != ret_o ) {
@@ -340,8 +340,8 @@ _test_save_fd(void)
   fclose(ef);  //  truncate to zero
   c3_i efid_i = open(src_c, O_RDONLY);
   c3_h emh = 0;
-  c3_w esw = 0;
-  if ( c3n != u3_blob_save_fd(_tmp_pier, efid_i, 0, &emh, &esw) ) {
+  c3_h esh = 0;
+  if ( c3n != u3_blob_save_fd(_tmp_pier, efid_i, 0, &emh, &esh) ) {
     fprintf(stderr, "\033[31mblob save_fd: should reject empty\033[0m\r\n");
     exit(1);
   }
@@ -349,7 +349,7 @@ _test_save_fd(void)
 
   //  verify loaded content matches
   //
-  u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_w);
+  u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_h);
   if ( u3_none == atm ) {
     fprintf(stderr, "\033[31mblob save_fd: load u3_none\033[0m\r\n");
     exit(1);
@@ -378,11 +378,11 @@ _test_delete_empty_bucket(void)
 
   const c3_y dat_y[] = "ephemeral blob";
   c3_h mug_h = 0;
-  c3_w seq_w = 0;
-  u3_blob_save(_tmp_pier, dat_y, sizeof(dat_y) - 1, &mug_h, &seq_w);
+  c3_h seq_h = 0;
+  u3_blob_save(_tmp_pier, dat_y, sizeof(dat_y) - 1, &mug_h, &seq_h);
 
   c3_c fil_c[8192], dir_c[8192];
-  u3_blob_path(fil_c, _tmp_pier, mug_h, seq_w);
+  u3_blob_path(fil_c, _tmp_pier, mug_h, seq_h);
   snprintf(dir_c, sizeof(dir_c), "%s/.urb/bob/%" PRIc3_h, _tmp_pier, mug_h);
 
   if ( c3y != _path_exists(dir_c) ) {
@@ -390,14 +390,14 @@ _test_delete_empty_bucket(void)
     exit(1);
   }
 
-  u3_blob_delete(_tmp_pier, mug_h, seq_w);
+  u3_blob_wipe(_tmp_pier, mug_h, seq_h);
 
   if ( c3y == _path_exists(fil_c) ) {
     fprintf(stderr, "\033[31mblob delete: file %s still exists\033[0m\r\n",
             fil_c);
     exit(1);
   }
-  if ( c3y == u3_blob_exists(_tmp_pier, mug_h, seq_w) ) {
+  if ( c3y == u3_blob_live(_tmp_pier, mug_h, seq_h) ) {
     fprintf(stderr, "\033[31mblob delete: exists() still true\033[0m\r\n");
     exit(1);
   }
@@ -409,7 +409,7 @@ _test_delete_empty_bucket(void)
 
   //  deleting a nonexistent blob is a no-op (no error)
   //
-  u3_blob_delete(_tmp_pier, 0xdeadbeef, 999);
+  u3_blob_wipe(_tmp_pier, 0xdeadbeef, 999);
 
   _tmp_clean();
   fprintf(stderr, "test blob delete (empty bucket): ok\r\n");
@@ -440,14 +440,14 @@ _test_install_stg(void)
   }
 
   c3_h mug_h = 0;
-  c3_w seq_w = 0;
-  if ( c3y != u3_blob_install_stg(_tmp_pier, stg_c, &mug_h, &seq_w) ) {
+  c3_h seq_h = 0;
+  if ( c3y != u3_blob_move_stg(_tmp_pier, stg_c, &mug_h, &seq_h) ) {
     fprintf(stderr, "\033[31mblob install_stg failed\033[0m\r\n");
     exit(1);
   }
-  if ( 1 != seq_w ) {
-    fprintf(stderr, "\033[31mblob install_stg: expected seq=1, got %" PRIc3_w
-                    "\033[0m\r\n", seq_w);
+  if ( 1 != seq_h ) {
+    fprintf(stderr, "\033[31mblob install_stg: expected seq=1, got %" PRIc3_h
+                    "\033[0m\r\n", seq_h);
     exit(1);
   }
 
@@ -458,14 +458,14 @@ _test_install_stg(void)
     exit(1);
   }
 
-  if ( c3y != u3_blob_exists(_tmp_pier, mug_h, seq_w) ) {
+  if ( c3y != u3_blob_live(_tmp_pier, mug_h, seq_h) ) {
     fprintf(stderr, "\033[31mblob install_stg: blob not present after install\033[0m\r\n");
     exit(1);
   }
 
   //  content preserved
   //
-  u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_w);
+  u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_h);
   if ( u3_none == atm ) {
     fprintf(stderr, "\033[31mblob install_stg: load u3_none\033[0m\r\n");
     exit(1);
@@ -500,24 +500,24 @@ _test_install_stg_dedup(void)
   //  first save via u3_blob_save
   //
   c3_h mug1_h = 0;
-  c3_w seq1_w = 0;
-  u3_blob_save(_tmp_pier, dat_y, dat_d, &mug1_h, &seq1_w);
+  c3_h seq1_h = 0;
+  u3_blob_save(_tmp_pier, dat_y, dat_d, &mug1_h, &seq1_h);
 
   //  then stage same content and install
   //
   c3_c* stg_c = _write_tmp_file(dat_y, dat_d);
 
   c3_h mug2_h = 0;
-  c3_w seq2_w = 0;
-  if ( c3y != u3_blob_install_stg(_tmp_pier, stg_c, &mug2_h, &seq2_w) ) {
+  c3_h seq2_h = 0;
+  if ( c3y != u3_blob_move_stg(_tmp_pier, stg_c, &mug2_h, &seq2_h) ) {
     fprintf(stderr, "\033[31mblob install_stg dedup: install failed\033[0m\r\n");
     exit(1);
   }
 
-  if ( mug1_h != mug2_h || seq1_w != seq2_w ) {
+  if ( mug1_h != mug2_h || seq1_h != seq2_h ) {
     fprintf(stderr, "\033[31mblob install_stg dedup: expected %"
-                    PRIc3_h "/%" PRIc3_w ", got %" PRIc3_h "/%" PRIc3_w
-                    "\033[0m\r\n", mug1_h, seq1_w, mug2_h, seq2_w);
+                    PRIc3_h "/%" PRIc3_h ", got %" PRIc3_h "/%" PRIc3_h
+                    "\033[0m\r\n", mug1_h, seq1_h, mug2_h, seq2_h);
     exit(1);
   }
 
@@ -530,14 +530,14 @@ _test_install_stg_dedup(void)
 
   //  reject missing and empty staging files
   //
-  c3_h m = 0; c3_w s = 0;
-  if ( c3n != u3_blob_install_stg(_tmp_pier, "/no/such/path", &m, &s) ) {
+  c3_h m = 0; c3_h s = 0;
+  if ( c3n != u3_blob_move_stg(_tmp_pier, "/no/such/path", &m, &s) ) {
     fprintf(stderr, "\033[31mblob install_stg: should reject missing file\033[0m\r\n");
     exit(1);
   }
 
   c3_c* empty_c = _write_tmp_file((const c3_y*)"", 0);
-  if ( c3n != u3_blob_install_stg(_tmp_pier, empty_c, &m, &s) ) {
+  if ( c3n != u3_blob_move_stg(_tmp_pier, empty_c, &m, &s) ) {
     fprintf(stderr, "\033[31mblob install_stg: should reject empty\033[0m\r\n");
     exit(1);
   }
@@ -570,17 +570,17 @@ _test_met(void)
   {
     const c3_y dat_y[] = { 0xab, 0xcd, 0xef, 0x01 };
     const c3_d dat_d   = sizeof(dat_y);
-    c3_h mug_h = 0; c3_w seq_w = 0;
-    u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_w);
+    c3_h mug_h = 0; c3_h seq_h = 0;
+    u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_h);
 
-    c3_d bit_d = u3_blob_met(_tmp_pier, mug_h, seq_w);
+    c3_d bit_d = u3_blob_met(_tmp_pier, mug_h, seq_h);
     if ( 25 != bit_d ) {
       fprintf(stderr, "\033[31mblob met: dense got %" PRIc3_d ", expected 25"
                       "\033[0m\r\n", bit_d);
       exit(1);
     }
 
-    u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_w);
+    u3_weak atm = u3_blob_load(_tmp_pier, mug_h, seq_h);
     if ( u3_none == atm ) {
       fprintf(stderr, "\033[31mblob met: load u3_none\033[0m\r\n");
       exit(1);
@@ -601,10 +601,10 @@ _test_met(void)
   {
     const c3_y dat_y[] = { 0xff, 0xff, 0x00, 0x00, 0x00 };
     const c3_d dat_d   = sizeof(dat_y);
-    c3_h mug_h = 0; c3_w seq_w = 0;
-    u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_w);
+    c3_h mug_h = 0; c3_h seq_h = 0;
+    u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_h);
 
-    c3_d bit_d = u3_blob_met(_tmp_pier, mug_h, seq_w);
+    c3_d bit_d = u3_blob_met(_tmp_pier, mug_h, seq_h);
     //  16 significant bits; high byte 0xff → 8 bits
     //  total = 1*8 + 8 = 16
     //
@@ -628,7 +628,7 @@ _test_met(void)
   fprintf(stderr, "test blob met: ok\r\n");
 }
 
-/* _test_map(): u3_blob_map returns byte-accurate pointer.
+/* _test_map(): u3_blob_mmap returns byte-accurate pointer.
 */
 static void
 _test_map(void)
@@ -639,11 +639,11 @@ _test_map(void)
 
   const c3_y dat_y[] = "mapped bytes should round-trip exactly";
   const c3_d dat_d   = sizeof(dat_y) - 1;
-  c3_h mug_h = 0; c3_w seq_w = 0;
-  u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_w);
+  c3_h mug_h = 0; c3_h seq_h = 0;
+  u3_blob_save(_tmp_pier, dat_y, dat_d, &mug_h, &seq_h);
 
   c3_d mlen_d = 0;
-  const c3_y* map_y = u3_blob_map(_tmp_pier, mug_h, seq_w, &mlen_d);
+  const c3_y* map_y = u3_blob_mmap(_tmp_pier, mug_h, seq_h, &mlen_d);
   if ( !map_y ) {
     fprintf(stderr, "\033[31mblob map: returned NULL\033[0m\r\n");
     exit(1);
@@ -657,15 +657,15 @@ _test_map(void)
     fprintf(stderr, "\033[31mblob map: byte mismatch\033[0m\r\n");
     exit(1);
   }
-  u3_blob_unmap(map_y, mlen_d);
+  u3_blob_umap(map_y, mlen_d);
 
   //  mapping nonexistent returns NULL
   //
   c3_d dlen_d = 0;
-  const c3_y* miss_y = u3_blob_map(_tmp_pier, 0xdeadbeef, 999, &dlen_d);
+  const c3_y* miss_y = u3_blob_mmap(_tmp_pier, 0xdeadbeef, 999, &dlen_d);
   if ( miss_y ) {
     fprintf(stderr, "\033[31mblob map: missing should be NULL\033[0m\r\n");
-    u3_blob_unmap(miss_y, dlen_d);
+    u3_blob_umap(miss_y, dlen_d);
     exit(1);
   }
 
@@ -710,13 +710,13 @@ _test_lifecycle(void)
   const c3_d dat2_d   = sizeof(dat2_y) - 1;
 
   c3_h mug1_h = 0, mug2_h = 0, mug3_h = 0;
-  c3_w seq1_w = 0, seq2_w = 0, seq3_w = 0;
+  c3_h seq1_h = 0, seq2_h = 0, seq3_h = 0;
 
-  if ( c3y != u3_blob_save(_tmp_pier, dat1_y, dat1_d, &mug1_h, &seq1_w) ) {
+  if ( c3y != u3_blob_save(_tmp_pier, dat1_y, dat1_d, &mug1_h, &seq1_h) ) {
     fprintf(stderr, "\033[31mlifecycle: save1 failed\033[0m\r\n");
     exit(1);
   }
-  if ( c3y != u3_blob_save(_tmp_pier, dat2_y, dat2_d, &mug2_h, &seq2_w) ) {
+  if ( c3y != u3_blob_save(_tmp_pier, dat2_y, dat2_d, &mug2_h, &seq2_h) ) {
     fprintf(stderr, "\033[31mlifecycle: save2 failed\033[0m\r\n");
     exit(1);
   }
@@ -725,16 +725,16 @@ _test_lifecycle(void)
   //
   {
     c3_c* stg_c = _write_tmp_file(dat1_y, dat1_d);
-    if ( c3y != u3_blob_install_stg(_tmp_pier, stg_c, &mug3_h, &seq3_w) ) {
+    if ( c3y != u3_blob_move_stg(_tmp_pier, stg_c, &mug3_h, &seq3_h) ) {
       fprintf(stderr, "\033[31mlifecycle: install_stg failed\033[0m\r\n");
       exit(1);
     }
     free(stg_c);
   }
-  if ( mug1_h != mug3_h || seq1_w != seq3_w ) {
+  if ( mug1_h != mug3_h || seq1_h != seq3_h ) {
     fprintf(stderr, "\033[31mlifecycle: install_stg should dedup; "
-                    "got %" PRIc3_h "/%" PRIc3_w " vs %" PRIc3_h "/%"
-                    PRIc3_w "\033[0m\r\n", mug3_h, seq3_w, mug1_h, seq1_w);
+                    "got %" PRIc3_h "/%" PRIc3_h " vs %" PRIc3_h "/%"
+                    PRIc3_h "\033[0m\r\n", mug3_h, seq3_h, mug1_h, seq1_h);
     exit(1);
   }
 
@@ -744,8 +744,8 @@ _test_lifecycle(void)
   //
   //  shape: [%blob-evt [bob1 bob2] bob1 42]
   //
-  u3_noun bob1 = u3i_blob(mug1_h, seq1_w);
-  u3_noun bob2 = u3i_blob(mug2_h, seq2_w);
+  u3_noun bob1 = u3i_blob(mug1_h, seq1_h);
+  u3_noun bob2 = u3i_blob(mug2_h, seq2_h);
   u3_noun ref  = u3nq(c3__blob,
                       u3nc(u3k(bob1), u3k(bob2)),
                       u3k(bob1),
@@ -819,19 +819,19 @@ _test_lifecycle(void)
     exit(1);
   }
   if (  u3a_bob_mug(bob1_d) != mug1_h
-     || u3a_bob_seq(bob1_d) != seq1_w )
+     || u3a_bob_seq(bob1_d) != seq1_h )
   {
     fprintf(stderr, "\033[31mlifecycle: bob1 mug/seq mismatch\033[0m\r\n");
     exit(1);
   }
   if (  u3a_bob_mug(b2) != mug1_h
-     || u3a_bob_seq(b2) != seq1_w )
+     || u3a_bob_seq(b2) != seq1_h )
   {
     fprintf(stderr, "\033[31mlifecycle: backref bob1 mug/seq mismatch\033[0m\r\n");
     exit(1);
   }
   if (  u3a_bob_mug(bob2_d) != mug2_h
-     || u3a_bob_seq(bob2_d) != seq2_w )
+     || u3a_bob_seq(bob2_d) != seq2_h )
   {
     fprintf(stderr, "\033[31mlifecycle: bob2 mug/seq mismatch\033[0m\r\n");
     exit(1);
@@ -865,7 +865,7 @@ _test_lifecycle(void)
   //
   {
     c3_d    bit_d = u3r_blob_met(bob1_d);
-    u3_weak mat   = u3_blob_load(_tmp_pier, mug1_h, seq1_w);
+    u3_weak mat   = u3_blob_load(_tmp_pier, mug1_h, seq1_h);
     if ( u3_none == mat ) {
       fprintf(stderr, "\033[31mlifecycle: u3_blob_load failed\033[0m\r\n");
       exit(1);
@@ -885,10 +885,10 @@ _test_lifecycle(void)
 
   //  tear down and confirm blob files are deleted cleanly
   //
-  u3_blob_delete(_tmp_pier, mug1_h, seq1_w);
-  u3_blob_delete(_tmp_pier, mug2_h, seq2_w);
-  if (  c3y == u3_blob_exists(_tmp_pier, mug1_h, seq1_w)
-     || c3y == u3_blob_exists(_tmp_pier, mug2_h, seq2_w) )
+  u3_blob_wipe(_tmp_pier, mug1_h, seq1_h);
+  u3_blob_wipe(_tmp_pier, mug2_h, seq2_h);
+  if (  c3y == u3_blob_live(_tmp_pier, mug1_h, seq1_h)
+     || c3y == u3_blob_live(_tmp_pier, mug2_h, seq2_h) )
   {
     fprintf(stderr, "\033[31mlifecycle: blobs still present after delete\033[0m\r\n");
     exit(1);

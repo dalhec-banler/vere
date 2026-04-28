@@ -459,9 +459,9 @@ _unix_write_file_hard(c3_c* pax_c, u3_noun mim)
   //
   if ( c3y == u3a_is_bob(dat) ) {
     c3_h bob_mug_h = u3a_bob_mug(dat);
-    c3_w bob_seq_w = u3a_bob_seq(dat);
+    c3_h bob_seq_h = u3a_bob_seq(dat);
     c3_c src_c[8192];
-    u3_blob_path(src_c, u3C.dir_c, bob_mug_h, bob_seq_w);
+    u3_blob_path(src_c, u3C.dir_c, bob_mug_h, bob_seq_h);
 
     c3_i src_i = open(src_c, O_RDONLY);
     if ( src_i < 0 ) {
@@ -964,7 +964,7 @@ static u3_noun _unix_update_node(u3_unix* unx_u, u3_unod* nod_u);
 static void
 _unix_blob_install_cb(void*  ptr_v,
                       c3_h   mug_h,
-                      c3_w   seq_w,
+                      c3_h   seq_h,
                       c3_o   ok_o)
 {
   u3_unix_bob_ctx* ctx = ptr_v;
@@ -983,7 +983,7 @@ _unix_blob_install_cb(void*  ptr_v,
         ctx->fil_u->gum_w = mug_h;
       }
 
-      u3_atom  atm = u3i_blob(mug_h, seq_w);
+      u3_atom  atm = u3i_blob(mug_h, seq_h);
       u3_noun  dat = u3nt(ctx->mim, (u3_atom)ctx->len_ws, atm);
       u3_noun  can = u3nc(u3nt(ctx->pax, u3_nul, dat), u3_nul);
       u3_noun  wir = u3nt(c3__sync,
@@ -1430,10 +1430,10 @@ _unix_initial_update_file(c3_c* pax_c, c3_c* bas_c)
   //
   if ( (c3_d)len_ws > U3_BLOB_THRESH ) {
     c3_h  bob_mug_h;
-    c3_w  bob_seq_w;
+    c3_h  bob_seq_h;
 
     c3_o ok_o = u3_blob_save_fd(u3C.dir_c, fid_i,
-                                (c3_d)len_ws, &bob_mug_h, &bob_seq_w);
+                                (c3_d)len_ws, &bob_mug_h, &bob_seq_h);
 
     if ( close(fid_i) < 0 ) {
       u3l_log("error closing initial file %s: %s", pax_c, strerror(errno));
@@ -1447,7 +1447,7 @@ _unix_initial_update_file(c3_c* pax_c, c3_c* bas_c)
     {
       u3_noun rel_pax = _unix_string_to_path_helper(pax_c + strlen(bas_c) + 1);
       u3_noun mim     = u3nt(c3__text, u3i_string("plain"), u3_nul);
-      u3_atom atm     = u3i_blob(bob_mug_h, bob_seq_w);
+      u3_atom atm     = u3i_blob(bob_mug_h, bob_seq_h);
       u3_noun dat     = u3nt(mim, (u3_atom)len_ws, atm);
 
       return u3nc(u3nt(rel_pax, u3_nul, dat), u3_nul);

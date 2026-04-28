@@ -836,26 +836,19 @@ u3i_vmolt(u3_noun som, u3i_molt_pair pairs[], c3_z len_z)
 
 /* u3i_blob(): construct or intern a bob atom (blob reference).
 **
-**   A bob atom is an indirect atom with the MSB of len_w set.
-**   [mug_h] is the 31-bit mug of the content (= blob directory name).
-**   [seq_w] is the sequence number within $pier/.urb/bob/<mug>/.
-**
 **   If a u3a_blob exists in blb_p with a live interned atom (atm_w != 0),
 **   returns the existing atom.  Otherwise allocates a fresh bob atom and
 **   stores its offset in blb_u->atm_w (if a blb_p entry exists).
 */
 u3_atom
-u3i_blob(c3_h mug_h, c3_w seq_w)
+u3i_blob(c3_h mug_h, c3_h seq_h)
 {
-  //  blb_p lives on the home road
-  //
   u3_assert( &(u3H->rod_u) == u3R );
 
-  //  check blb_p for an existing interned atom
+  //  bid is a direct atom on VERE64 (63 bits max)
   //
-  c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-  u3_noun bid   = u3i_chub(bid_d);
-  u3_weak bv    = u3h_get(u3H->blb_p, bid);
+  c3_w    bid = ((c3_w)mug_h << 32) | (c3_w)seq_h;
+  u3_weak bv  = u3h_get(u3H->blb_p, bid);
 
   if ( u3_none != bv ) {
     c3_w off_w = 0;
@@ -863,7 +856,6 @@ u3i_blob(c3_h mug_h, c3_w seq_w)
     u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
 
     if ( blb_u->atm_w ) {
-      u3z(bid);
       return u3k(u3a_to_pug(blb_u->atm_w));
     }
   }
@@ -874,21 +866,17 @@ u3i_blob(c3_h mug_h, c3_w seq_w)
   u3a_atom* vat_u = (void *)nov_w;
 
   vat_u->use_w    = 1;
-  vat_u->mug_h    = mug_h;
+  vat_u->mug_w    = mug_h;
   vat_u->len_w    = 1 | u3a_blob_flag;
-  vat_u->buf_w[0] = seq_w;
+  vat_u->buf_w[0] = seq_h;
 
-  c3_w atm_off_w = u3a_outa(nov_w);
+  c3_w atm_w = u3a_outa(nov_w);
 
-  //  store in blb_p entry if one exists (created by %blob IPC handler)
-  //
   if ( u3_none != bv ) {
     c3_w off_w = 0;
     u3r_safe_word(bv, &off_w);
-    u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
-    blb_u->atm_w = atm_off_w;
+    ((u3a_blob*)u3a_into(off_w))->atm_w = atm_w;
   }
 
-  u3z(bid);
-  return u3a_to_pug(atm_off_w);
+  return u3a_to_pug(atm_w);
 }

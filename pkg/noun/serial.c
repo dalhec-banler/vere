@@ -962,7 +962,7 @@ u3s_cue_atom(u3_atom a)
   }
 
   //  bob atom: mmap the backing file instead of dereferencing buf_w
-  //  (which for a bob would yield seq_w).  The view stays live for
+  //  (which for a bob would yield seq_h).  The view stays live for
   //  the whole cue so the bitstream reader can scan freely.
   //
   if ( c3y == u3a_is_bob(a) ) {
@@ -1610,7 +1610,7 @@ static inline void
 _cs_ram_bsw_bob(ur_bsw_t* rit_u, u3_atom a)
 {
   c3_h mug_h = u3a_bob_mug(a);
-  c3_w seq_w = u3a_bob_seq(a);
+  c3_h seq_h = u3a_bob_seq(a);
 
   //  write 2-bit tag 01
   //
@@ -1619,7 +1619,7 @@ _cs_ram_bsw_bob(ur_bsw_t* rit_u, u3_atom a)
   //  write mat(mug) and mat(seq)
   //
   ur_bsw_mat64(rit_u, u3r_met(0, (u3_atom)mug_h), (c3_d)mug_h);
-  ur_bsw_mat64(rit_u, u3r_met(0, (u3_atom)seq_w), (c3_d)seq_w);
+  ur_bsw_mat64(rit_u, u3r_met(0, (u3_atom)seq_h), (c3_d)seq_h);
 }
 
 /* _cs_ram_bsw_back(): encode a backref as tag 11 + mat(bit-position).
@@ -1855,7 +1855,7 @@ _cs_tap_xeno_next(u3a_pile*    pil_u,
         }
         seq_d = ur_bsr64_any(red_u, len_d);
 
-        *out = u3i_blob((c3_h)mug_d, (c3_w)seq_d);
+        *out = u3i_blob((c3_h)mug_d, (c3_h)seq_d);
 
         ur_dictn_put(rot_u, dic_u, bit_d, *out);
         return ur_cue_good;

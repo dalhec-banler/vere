@@ -499,7 +499,7 @@
             struct {                            //  blob-install:
               c3_c*        pax_c;               //    staging path (heap-alloc'd)
               void*        ptr_v;               //    callback context
-              void (*fun_f)(void*, c3_h, c3_w, c3_o);  //  ack cb(ctx, mug, seq, ok)
+              void (*fun_f)(void*, c3_h, c3_h, c3_o);  //  ack cb(ctx, mug, seq, ok)
             } blb_u;                            //
           };
         } u3_writ;
@@ -1083,17 +1083,17 @@
         u3_lord_blob_install(u3_lord* god_u,
                              c3_c*    pax_c,
                              void*    ptr_v,
-                             void   (*fun_f)(void*, c3_h, c3_w, c3_o));
+                             void   (*fun_f)(void*, c3_h, c3_h, c3_o));
 
       /* u3_lord_blob_lease(): tell Mars king is acquiring a blob lease.
       */
         void
-        u3_lord_blob_lease(u3_lord* god_u, c3_h mug_h, c3_w seq_w);
+        u3_lord_blob_lease(u3_lord* god_u, c3_h mug_h, c3_h seq_h);
 
       /* u3_lord_blob_release(): tell Mars king is releasing a blob lease.
       */
         void
-        u3_lord_blob_release(u3_lord* god_u, c3_h mug_h, c3_w seq_w);
+        u3_lord_blob_release(u3_lord* god_u, c3_h mug_h, c3_h seq_h);
 
     /**  Filesystem (async).
     **/

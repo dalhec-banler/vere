@@ -396,13 +396,13 @@ _ram_cleanup_tmp(void)
 }
 
 static c3_o
-_ram_make_blob(c3_h mug_h, c3_w seq_w, const c3_y* dat_y, c3_d len_d)
+_ram_make_blob(c3_h mug_h, c3_h seq_h, const c3_y* dat_y, c3_d len_d)
 {
   c3_c pax_c[2048];
   snprintf(pax_c, sizeof(pax_c), "%s/.urb/bob/%" PRIc3_h, _ram_tmp_dir, mug_h);
   mkdir(pax_c, 0755);
-  snprintf(pax_c, sizeof(pax_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_w,
-           _ram_tmp_dir, mug_h, seq_w);
+  snprintf(pax_c, sizeof(pax_c), "%s/.urb/bob/%" PRIc3_h "/%" PRIc3_h,
+           _ram_tmp_dir, mug_h, seq_h);
   FILE* fil_f = fopen(pax_c, "wb");
   if ( !fil_f ) {
     fprintf(stderr, "serial_tests: fopen %s: %s\r\n", pax_c, strerror(errno));
@@ -490,7 +490,7 @@ _test_ram_bob_roundtrip(void)
             || (u3a_bob_seq(out) != 1) )
     {
       fprintf(stderr, "\033[31mram bob solo fail: mug/seq mismatch "
-                      "(got %" PRIc3_h "/%" PRIc3_w ")\033[0m\r\n",
+                      "(got %" PRIc3_h "/%" PRIc3_h ")\033[0m\r\n",
               u3a_bob_mug(out), u3a_bob_seq(out));
       ret_i = 0;
     }

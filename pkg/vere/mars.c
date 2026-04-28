@@ -26,7 +26,7 @@
 typedef struct _u3v_lease {
   c3_d  exp_d;        //  expiry time (Unix ms)
   c3_h  mug_h;        //  blob mug
-  c3_w  seq_w;        //  blob seq within mug bucket
+  c3_h  seq_h;        //  blob seq within mug bucket
   c3_o  dead_o;       //  c3y if lease already released
 } u3v_lease;
 
@@ -112,13 +112,12 @@ _mars_pq_pop(_mars_lease_pq* pq_u)
 /* _mars_blob_del(): delete blob file and clean up blb_p entry.
 */
 static void
-_mars_blob_del(c3_h mug_h, c3_w seq_w)
+_mars_blob_del(c3_h mug_h, c3_h seq_h)
 {
-  u3_blob_delete(u3C.dir_c, mug_h, seq_w);
+  u3_blob_wipe(u3C.dir_c, mug_h, seq_h);
 
-  c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-  u3_noun bid   = u3i_chub(bid_d);
-  u3_weak bv    = u3h_get(u3H->blb_p, bid);
+  c3_w    bid = ((c3_w)mug_h << 32) | (c3_w)seq_h;
+  u3_weak bv  = u3h_get(u3H->blb_p, bid);
 
   if ( u3_none != bv ) {
     c3_w off_w = 0;
@@ -126,19 +125,15 @@ _mars_blob_del(c3_h mug_h, c3_w seq_w)
     u3a_wfree((void*)u3a_into(off_w));
     u3h_del(u3H->blb_p, bid);
   }
-
-  u3z(bid);
 }
 
 /* _blob_lookup(): get u3a_blob* for a bid, or NULL.
 */
 static u3a_blob*
-_blob_lookup(c3_h mug_h, c3_w seq_w)
+_blob_lookup(c3_h mug_h, c3_h seq_h)
 {
-  c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-  u3_noun bid   = u3i_chub(bid_d);
-  u3_weak bv    = u3h_get(u3H->blb_p, bid);
-  u3z(bid);
+  c3_w    bid = ((c3_w)mug_h << 32) | (c3_w)seq_h;
+  u3_weak bv  = u3h_get(u3H->blb_p, bid);
 
   if ( u3_none == bv ) return 0;
 
@@ -152,14 +147,14 @@ _blob_lookup(c3_h mug_h, c3_w seq_w)
 **   Deletion condition: log_w == 0 && les_w == 0 && atm_w == 0
 */
 static void
-_blob_maybe_delete(c3_h mug_h, c3_w seq_w)
+_blob_maybe_delete(c3_h mug_h, c3_h seq_h)
 {
-  u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
+  u3a_blob* blb_u = _blob_lookup(mug_h, seq_h);
   if ( !blb_u ) return;
 
   if ( 0 != blb_u->log_w || 0 != blb_u->les_w || 0 != blb_u->atm_w ) return;
 
-  _mars_blob_del(mug_h, seq_w);
+  _mars_blob_del(mug_h, seq_h);
 }
 
 /*
@@ -394,8 +389,8 @@ _mars_blob_bobs_atom(u3_atom a, void* ptr_v)
     acc->ids  = c3_realloc(acc->ids, acc->cap * sizeof(c3_d));
   }
   c3_h mug_h = u3a_bob_mug(a);
-  c3_w seq_w = u3a_bob_seq(a);
-  acc->ids[acc->len++] = ((c3_d)mug_h << 32) | (c3_d)seq_w;
+  c3_h seq_h = u3a_bob_seq(a);
+  acc->ids[acc->len++] = ((c3_d)mug_h << 32) | (c3_d)seq_h;
 }
 
 /* _mars_blob_bobs_cell(): u3a_walk_fore cell callback — always descend.
@@ -423,9 +418,9 @@ _mars_fact(u3_mars* mar_u,
 
     for ( c3_z i_z = 0; i_z < acc.len; i_z++ ) {
       c3_h mug_h = (c3_h)(acc.ids[i_z] >> 32);
-      c3_w seq_w = (c3_w)(acc.ids[i_z] & 0xFFFFFFFFULL);
+      c3_h seq_h = (c3_h)(acc.ids[i_z] & 0xFFFFFFFF);
 
-      u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
+      u3a_blob* blb_u = _blob_lookup(mug_h, seq_h);
       if ( blb_u ) {
         blb_u->log_w++;
       }
@@ -798,14 +793,14 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
       _mars_pq_pop(&_mars_pq);
 
       {
-        u3a_blob* blb_u = _blob_lookup(top_u->mug_h, top_u->seq_w);
+        u3a_blob* blb_u = _blob_lookup(top_u->mug_h, top_u->seq_h);
         if ( blb_u && blb_u->les_w > 0 ) {
           blb_u->les_w--;
         }
       }
 
       //  TODO: write blob-ref lease-release event to LMDB (tag 0x02, op 0x02)
-      _blob_maybe_delete(top_u->mug_h, top_u->seq_w);
+      _blob_maybe_delete(top_u->mug_h, top_u->seq_h);
 
       c3_free(top_u);
     }
@@ -975,7 +970,7 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
       //  [%blob path-atom]  — install staging file from king
       //
       c3_h mug_h = 0;
-      c3_w seq_w = 0;
+      c3_h seq_h = 0;
       c3_o ok_o  = c3n;
 
       //  extract path string from atom
@@ -985,27 +980,25 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
         c3_c stg_c[8192] = {0};
         u3r_bytes(0, (c3_w)len_d, (c3_y*)stg_c, dat);
 
-        ok_o = u3_blob_install_stg(u3C.dir_c, stg_c, &mug_h, &seq_w);
+        ok_o = u3_blob_move_stg(u3C.dir_c, stg_c, &mug_h, &seq_h);
 
         if ( c3y == ok_o ) {
           //  create u3a_blob (if not present) with les_w = 1 (implicit
           //  first lease for king).  push PQ entry for TTL expiry.
           //
           {
-            u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
+            u3a_blob* blb_u = _blob_lookup(mug_h, seq_h);
             if ( !blb_u ) {
-              c3_d    bid_d = ((c3_d)mug_h << 32) | (c3_d)seq_w;
-              u3_noun bid   = u3i_chub(bid_d);
+              c3_w    bid   = ((c3_w)mug_h << 32) | (c3_w)seq_h;
               c3_w*   blb_w = u3a_walloc(c3_wiseof(u3a_blob));
               blb_u         = (u3a_blob*)blb_w;
               blb_u->log_w  = 0;
               blb_u->les_w  = 0;
               blb_u->mug_h  = mug_h;
-              blb_u->seq_w  = seq_w;
+              blb_u->seq_h  = seq_h;
               blb_u->siz_d  = 0;
               blb_u->atm_w  = 0;
               u3h_put(u3H->blb_p, bid, u3i_word(u3a_outa(blb_w)));
-              u3z(bid);
             }
             blb_u->les_w++;
           }
@@ -1013,7 +1006,7 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
           {
             u3v_lease* lea_u = c3_malloc(sizeof(*lea_u));
             lea_u->mug_h  = mug_h;
-            lea_u->seq_w  = seq_w;
+            lea_u->seq_h  = seq_h;
             lea_u->dead_o = c3n;
             {
               struct timeval tv_u;
@@ -1040,7 +1033,7 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
 
       if ( c3y == ok_o ) {
         _mars_gift(mar_u, u3nt(c3__blob, c3y,
-                               u3nc(u3i_word(mug_h), u3i_word(seq_w))));
+                               u3nc(u3i_word(mug_h), u3i_word(seq_h))));
       }
       else {
         _mars_gift(mar_u, u3nc(c3__blob, c3n));
@@ -1056,11 +1049,11 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
         return c3n;
       }
       c3_h mug_h = 0;
-      c3_w seq_w = 0;
+      c3_h seq_h = 0;
       u3r_safe_half(mug_n, &mug_h);
-      u3r_safe_word(seq_n, &seq_w);
+      u3r_safe_half(seq_n, &seq_h);
 
-      u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
+      u3a_blob* blb_u = _blob_lookup(mug_h, seq_h);
       if ( blb_u ) {
         blb_u->les_w++;
 
@@ -1068,7 +1061,7 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
         //
         u3v_lease* lea_u = c3_malloc(sizeof(*lea_u));
         lea_u->mug_h  = mug_h;
-        lea_u->seq_w  = seq_w;
+        lea_u->seq_h  = seq_h;
         lea_u->dead_o = c3n;
         {
           struct timeval tv_u;
@@ -1092,11 +1085,11 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
         return c3n;
       }
       c3_h mug_h = 0;
-      c3_w seq_w = 0;
+      c3_h seq_h = 0;
       u3r_safe_half(mug_n, &mug_h);
-      u3r_safe_word(seq_n, &seq_w);
+      u3r_safe_half(seq_n, &seq_h);
 
-      u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
+      u3a_blob* blb_u = _blob_lookup(mug_h, seq_h);
       if ( blb_u && blb_u->les_w > 0 ) {
         blb_u->les_w--;
       }
@@ -1110,7 +1103,7 @@ _mars_work(u3_mars* mar_u, u3_noun jar)
       //  already 0 → clamped by the >0 check → safe.
       //
 
-      _blob_maybe_delete(mug_h, seq_w);
+      _blob_maybe_delete(mug_h, seq_h);
 
       u3z(jar);
     } break;
@@ -1395,8 +1388,8 @@ _mars_poke_play(u3_mars* mar_u, const u3_fact* tac_u)
 
       for ( c3_z i_z = 0; i_z < acc.len; i_z++ ) {
         c3_h mug_h = (c3_h)(acc.ids[i_z] >> 32);
-        c3_w seq_w = (c3_w)(acc.ids[i_z] & 0xFFFFFFFFULL);
-        u3a_blob* blb_u = _blob_lookup(mug_h, seq_w);
+        c3_h seq_h = (c3_h)(acc.ids[i_z] & 0xFFFFFFFF);
+        u3a_blob* blb_u = _blob_lookup(mug_h, seq_h);
         if ( blb_u ) {
           blb_u->log_w++;
         }
