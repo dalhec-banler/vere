@@ -200,6 +200,9 @@ _main_init(void)
   u3_Host.ops_u.tex = c3n;
   u3_Host.ops_u.tra = c3n;
   u3_Host.ops_u.veb = c3n;
+#ifdef __ANDROID__
+  u3_Host.ops_u.con = c3n;  // disable conn on Android (socket permission issues)
+#endif
   u3_Host.ops_u.puf_c = "jam";
   u3_Host.ops_u.hap_w = 50000;
   u3C.hap_w = u3_Host.ops_u.hap_w;
@@ -215,11 +218,12 @@ _main_init(void)
   u3_Host.ops_u.siz_i =
 #if defined(U3_OS_windows)
     0xf00000000;
+#elif defined(__ANDROID__)
+    0x1000000000;  // 64 GiB for Android (mmap restrictions)
 #elif (defined(U3_CPU_aarch64) && defined(U3_OS_linux))
-  // 500 GiB is as large as musl on aarch64 wants to allow
-  0x7d00000000;
+    0x7d00000000;  // 500 GiB for aarch64 linux
 #else
-  0x10000000000;
+    0x10000000000;
 #endif
 
   u3C.eph_c = 0;
