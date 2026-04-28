@@ -863,13 +863,20 @@ _me_bob_dead(u3a_atom* atm_u)
     c3_w off_w = 0;
     u3r_safe_word(bv, &off_w);
     u3a_blob* blb_u = (u3a_blob*)u3a_into(off_w);
-    blb_u->atm_w = 0;
 
-    if ( u3C.blob_del_f
-      && 0 == blb_u->log_w
-      && 0 == blb_u->les_w )
-    {
-      u3C.blob_del_f(mug_h, seq_h);
+    //  only clear atm_w if this dying atom IS the interned one.
+    //  meld may canonicalize duplicate bob atoms, freeing one while
+    //  keeping the other — don't clear the survivor's pointer.
+    //
+    if ( blb_u->atm_w == u3a_outa(atm_u) ) {
+      blb_u->atm_w = 0;
+
+      if ( u3C.blob_del_f
+        && 0 == blb_u->log_w
+        && 0 == blb_u->les_w )
+      {
+        u3C.blob_del_f(mug_h, seq_h);
+      }
     }
   }
   else if ( u3C.blob_del_f ) {
