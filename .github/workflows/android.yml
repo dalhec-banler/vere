@@ -1,0 +1,150 @@
+name: Android ARM64
+
+on:
+  push:
+    branches: [msl/64]
+  pull_request:
+    branches: [msl/64]
+  workflow_dispatch:
+    inputs:
+      optimize:
+        description: 'Optimization level'
+        type: choice
+        options:
+          - ReleaseFast
+          - ReleaseSmall
+          - ReleaseSafe
+          - Debug
+        default: 'ReleaseFast'
+
+env:
+  ZIG_VERSION: "0.15.2"
+
+jobs:
+  build-android-arm64:
+    name: Build urbit (aarch64-linux-musl)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set swap space
+        run: |
+          echo "Memory and swap:"
+          free -h
+          echo
+          swapon --show
+          echo
+
+          export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
+          if test -z "${SWAP_FILE}"; then
+              export SWAP_FILE=/swapfile
+          else
+              sudo swapoff -a
+              sudo rm "${SWAP_FILE}"
+          fi
+          sudo fallocate -l 10G "${SWAP_FILE}"
+          sudo chmod 600 "${SWAP_FILE}"
+          sudo mkswap "${SWAP_FILE}"
+          sudo swapon "${SWAP_FILE}"
+
+          echo "Memory and swap:"
+          free -h
+          echo
+          swapon --show
+
+      - name: Set memory overcommit
+        run: |
+          sudo sysctl -w vm.overcommit_memory=1
+          echo "vm.overcommit_memory=1" | sudo tee -a /etc/sysctl.conf
+
+      - name: Install Zig ${{ env.ZIG_VERSION }}
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build urbit for Android ARM64
+        run: |
+          OPTIMIZE=${{ inputs.optimize || 'ReleaseFast' }}
+          zig build \
+            -Dtarget=aarch64-linux-musl \
+            -Doptimize=${OPTIMIZE} \
+            --summary all
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(sed -nr 's/#define URBIT_VERSION "(.*)"/\1/p' zig-out/include/version.h || echo "unknown")
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "Built urbit version: $VERSION (commit: $COMMIT)"
+
+      - name: List build output
+        run: |
+          ls -la zig-out/aarch64-linux-musl/
+          file zig-out/aarch64-linux-musl/urbit
+
+      - name: Upload urbit binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: urbit-aarch64-linux-musl-${{ steps.version.outputs.commit }}
+          path: zig-out/aarch64-linux-musl/urbit
+          if-no-files-found: error
+
+  build-android-arm64-stripped:
+    name: Build stripped urbit (aarch64-linux-musl)
+    runs-on: ubuntu-latest
+    needs: build-android-arm64
+
+    steps:
+      - name: Download urbit binary
+        uses: actions/download-artifact@v4
+        with:
+          name: urbit-aarch64-linux-musl-${{ needs.build-android-arm64.outputs.commit || github.sha }}
+          path: ./
+
+      - name: Install llvm-strip
+        run: sudo apt-get install -y llvm
+
+      - name: Strip binary
+        run: |
+          chmod +x urbit
+          ls -la urbit
+          llvm-strip urbit -o urbit-stripped
+          ls -la urbit-stripped
+
+      - name: Upload stripped binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: urbit-aarch64-linux-musl-stripped
+          path: urbit-stripped
+          if-no-files-found: error
+
+  test:
+    name: Run unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Zig ${{ env.ZIG_VERSION }}
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Run unit tests
+        run: |
+          zig build \
+            ur-test ent-test \
+            hashtable-test jets-test \
+            nock-test retrieve-test \
+            serial-test ames-test \
+            pact-test equality-test \
+            boot-test newt-test \
+            vere-noun-test unix-test \
+            palloc-test benchmarks \
+            -Doptimize=ReleaseFast \
+            --summary all
