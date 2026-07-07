@@ -288,3 +288,13 @@ GTAGS
 /nel
 /nev
 /fes
+
+# Local assistant/dev workspace files
+.claude/
+.codex/
+.mcp.json
+build-audits/
+build-husky-fast.sh
+optimize-rom-build-system.sh
+test-fake-ship.sh
+tools/

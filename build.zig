@@ -547,6 +547,13 @@ fn buildBinary(
         .optimize = optimize,
     }) });
 
+    // For Android: use a high base address to avoid conflicts with kernel mappings
+    // Android typically uses low addresses (0-256MB) for vDSO/linker
+    // We move the binary to 0x40000000 (1GB) which is safely in user space
+    if (cfg.android) {
+        urbit.image_base = 0x40000000;
+    }
+
     if (t.os.tag == .windows) {
         urbit.stack_size = 67108864;
     } else {

@@ -34,6 +34,7 @@ pub fn build(b: *std.Build) void {
         "-Wstrict-aliasing=2",
         "-Werror=implicit-function-declaration",
         "-fno-sanitize=all",
+        "-fPIC",
         // "-fsanitize=undefined",
         // "-fno-sanitize-trap=undefined",
     };
