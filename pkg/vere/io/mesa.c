@@ -2997,7 +2997,7 @@ u3_auto*
 u3_mesa_io_init(u3_pier* pir_u)
 {
   u3l_log("mesa: INIT");
-  /* packs = fopen("/home/ec2-user/pages.packs", "rb"); */
+  /* packs = fopen("/path/to/pages.packs", "rb"); */
   arena par_u     = arena_create(67108864);
   u3_mesa* sam_u  = new(&par_u, u3_mesa, 1);
   sam_u->par_u    = par_u;

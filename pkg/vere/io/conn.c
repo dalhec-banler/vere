@@ -770,6 +770,23 @@ _conn_init_sock(u3_shan* san_u)
     u3l_log("conn: uv_pipe_bind: %s", uv_strerror(err_i));
     goto _conn_sock_err_chdir;
   }
+#ifdef __ANDROID__
+  // Android's controller runs outside the pier owner uid. Keep the pier
+  // private above /data/nativeplanet, but make the control socket path
+  // traversable/connectable for the platform controller.
+  if ( 0 != chmod(".", 02711) ) {
+    u3l_log("conn: chmod pier: %s", uv_strerror(errno));
+    goto _conn_sock_err_unlink;
+  }
+  if ( 0 != chmod(".urb", 02711) ) {
+    u3l_log("conn: chmod .urb: %s", uv_strerror(errno));
+    goto _conn_sock_err_unlink;
+  }
+  if ( 0 != chmod(URB_SOCK_PATH, 0666) ) {
+    u3l_log("conn: chmod %s: %s", URB_SOCK_PATH, uv_strerror(errno));
+    goto _conn_sock_err_unlink;
+  }
+#endif
   if ( 0 != (err_i = uv_listen((uv_stream_t*)&san_u->pyp_u, 0,
                                _conn_sock_cb)) ) {
     u3l_log("conn: uv_listen: %s", uv_strerror(err_i));

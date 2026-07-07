@@ -36,6 +36,7 @@
 #include "vortex.h"
 #include "whereami.h"
 #include "xtract.h"
+#include "c3/android_log.h"
 
 //  XX stack-overflow recovery should be gated by -a
 //
@@ -2613,18 +2614,41 @@ u3m_init(size_t len_i)
   // map at fixed address.
   //
   {
+#ifdef __ANDROID__
+    android_early_log("u3m_init: loom size %zuMB (%zu bytes)", len_i >> 20, len_i);
+    android_early_log("u3m_init: U3_OS_LoomBase = %p", (void*)U3_OS_LoomBase);
+    android_early_log("u3m_init: u3_Loom = %p", (void*)u3_Loom);
+    android_early_log("u3m_init: attempting MAP_FIXED mmap...");
+#endif
+
     void* map_v = mmap((void *)u3_Loom,
                        len_i,
                        (PROT_READ | PROT_WRITE),
                        (MAP_ANON | MAP_FIXED | MAP_PRIVATE),
                        -1, 0);
 
+#ifdef __ANDROID__
+    int saved_errno = errno;
+    android_early_log("u3m_init: MAP_FIXED mmap result = %p (errno=%d: %s)",
+                      map_v, saved_errno, strerror(saved_errno));
+#endif
+
     if ( -1 == (c3_ps)map_v ) {
+#ifdef __ANDROID__
+      android_early_log("u3m_init: MAP_FIXED failed, trying fallback mmap...");
+#endif
+
       map_v = mmap((void *)0,
                    len_i,
                    (PROT_READ | PROT_WRITE),
                    (MAP_ANON | MAP_PRIVATE),
                    -1, 0);
+
+#ifdef __ANDROID__
+      saved_errno = errno;
+      android_early_log("u3m_init: fallback mmap result = %p (errno=%d: %s)",
+                        map_v, saved_errno, strerror(saved_errno));
+#endif
 
       u3l_log("boot: mapping %zuMB failed", len_i >> 20);
       u3l_log("see https://docs.urbit.org/user-manual/running/cloud-hosting"
@@ -2632,12 +2656,22 @@ u3m_init(size_t len_i)
       if ( -1 != (c3_ps)map_v ) {
         u3l_log("if porting to a new platform, try U3_OS_LoomBase %p",
                 map_v);
+#ifdef __ANDROID__
+        android_early_log("u3m_init: suggested new LoomBase = %p", map_v);
+#endif
       }
+#ifdef __ANDROID__
+      android_early_log("u3m_init: FATAL - exiting due to mmap failure");
+#endif
       exit(1);
     }
 
     u3C.wor_i = len_i >> u3a_word_bytes_shift;
     u3l_log("loom: mapped %zuMB", len_i >> 20);
+#ifdef __ANDROID__
+    android_early_log("u3m_init: loom mapped successfully at %p (%zuMB)",
+                      map_v, len_i >> 20);
+#endif
   }
 }
 

@@ -29,6 +29,7 @@
 #include "version.h"
 #include "whereami.h"
 #include "mars.h"
+#include "c3/android_log.h"
 
 static u3_moat      inn_u;             //  input stream
 static u3_mojo      out_u;             //  output stream
@@ -200,9 +201,6 @@ _main_init(void)
   u3_Host.ops_u.tex = c3n;
   u3_Host.ops_u.tra = c3n;
   u3_Host.ops_u.veb = c3n;
-#ifdef __ANDROID__
-  u3_Host.ops_u.con = c3n;  // disable conn on Android (socket permission issues)
-#endif
   u3_Host.ops_u.puf_c = "jam";
   u3_Host.ops_u.hap_w = 50000;
   u3C.hap_w = u3_Host.ops_u.hap_w;
@@ -747,6 +745,16 @@ _main_getopt(c3_i argc, c3_c** argv)
   //   _main_add_prop(3, "webterm");
   //   _main_add_prop(3, "groups");
   // }
+
+#ifdef __ANDROID__
+  android_early_log("_main_getopt: parsed arguments");
+  android_early_log("  pier path (dir_c): %s", u3_Host.dir_c ? u3_Host.dir_c : "(null)");
+  android_early_log("  pill path (pil_c): %s", u3_Host.ops_u.pil_c ? u3_Host.ops_u.pil_c : "(null)");
+  android_early_log("  loom bits (lom_y): %d", u3_Host.ops_u.lom_y);
+  android_early_log("  daemon mode (dem): %s", u3_Host.ops_u.dem == c3y ? "yes" : "no");
+  android_early_log("  new ship (nuu): %s", u3_Host.ops_u.nuu == c3y ? "yes" : "no");
+  android_early_log("  fake ship name: %s", u3_Host.ops_u.fak_c ? u3_Host.ops_u.fak_c : "(null)");
+#endif
 
   return c3y;
 }
@@ -3153,6 +3161,12 @@ c3_i
 main(c3_i   argc,
      c3_c** argv)
 {
+#ifdef __ANDROID__
+  android_early_log_open();
+  android_early_log("vere main() entry");
+  android_early_log_argv(argc, argv);
+#endif
+
   if ( argc <= 0 ) {
     fprintf(stderr, "nice try, fbi\r\n");
     exit(1);
@@ -3192,6 +3206,10 @@ main(c3_i   argc,
 
   _main_self_path();
 
+#ifdef __ANDROID__
+  android_early_log("main: self_path = %s", u3_Host.dem_c ? u3_Host.dem_c : "(null)");
+#endif
+
   if ( !u3_Host.wrk_c ) {
     u3_Host.wrk_c = bin_c;
   }
@@ -3203,7 +3221,13 @@ main(c3_i   argc,
     //  In daemon mode, run the urbit as a background process, but don't
     //  exit from the parent process until the ship is finished booting.
     //
+#ifdef __ANDROID__
+    android_early_log("main: entering daemon mode (u3_daemon_init)");
+#endif
     u3_daemon_init();
+#ifdef __ANDROID__
+    android_early_log("main: u3_daemon_init returned (child process continues)");
+#endif
   }
 
   if ( c3y == u3_Host.ops_u.rep ) {
