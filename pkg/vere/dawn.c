@@ -4,6 +4,7 @@
 
 #include "vere.h"
 
+#include <errno.h>
 #include "curl/curl.h"
 #include "noun.h"
 #include "uv.h"
@@ -78,8 +79,8 @@ _dawn_post_json(c3_c* url_c, uv_buf_t lod_u)
 
   // XX retry?
   if ( CURLE_OK != result ) {
-    u3l_log("failed to fetch %s: %s",
-            url_c, curl_easy_strerror(result));
+    u3l_log("failed to fetch %s: curlcode=%d errno=%d %s",
+            url_c, (int)result, errno, curl_easy_strerror(result));
     exit(1);
   }
   if ( 300 <= cod_l ) {
@@ -121,8 +122,8 @@ _dawn_get_jam(c3_c* url_c)
 
   // XX retry?
   if ( CURLE_OK != result ) {
-    u3l_log("failed to fetch %s: %s",
-            url_c, curl_easy_strerror(result));
+    u3l_log("failed to fetch %s: curlcode=%d errno=%d %s",
+            url_c, (int)result, errno, curl_easy_strerror(result));
     exit(1);
   }
   if ( 300 <= cod_l ) {
